@@ -134,7 +134,7 @@ function doPost(e) {
             a.username || "",
             a.password || "",
             a.email || "",
-            a.noHp || "",
+            "'" + (a.noHp || ""),
             a.eSignEnabled ? "AKTIF" : "NONAKTIF",
             ttdData
           ]);
@@ -187,7 +187,7 @@ function doPost(e) {
             formatDateForSheet(item.createdAt),
             item.namaPemohon || "-",
             "'" + (item.nikPemohon || ""),
-            item.noWhatsApp || "-",
+            "'" + (item.noWhatsApp || ""),
             item.hubungan || "-",
             item.alamatPemohon || "-",
             item.pekerjaanPemohon || "-",
@@ -260,7 +260,7 @@ function doPost(e) {
         formatDateForSheet(data.createdAt),
         data.namaPemohon || "-",
         "'" + nik,
-        data.noWhatsApp || "-",
+        "'" + (data.noWhatsApp || ""),
         data.hubungan || "-",
         data.alamatPemohon || "-",
         data.pekerjaanPemohon || "-",
@@ -302,12 +302,34 @@ function doPost(e) {
   }
 }
 
+function getSpreadsheetDefaultDir(ss) {
+  var name = (ss.getName() || "").toLowerCase();
+  if (name.indexOf("tindak") >= 0 || name.indexOf("dik") >= 0 || name.indexOf("pd") >= 0) {
+    return "Penindakan";
+  }
+  // Heuristic: check if any permohonan contains PMpd or akun contains Penyidik
+  try {
+    var pSheet = ss.getSheetByName("Data_Permohonan_T10") || ss.getSheetByName("Permohonan_T10");
+    if (pSheet && pSheet.getLastRow() > 1) {
+      var sample = String(pSheet.getRange("A2:C2").getValues()[0] || "");
+      if (sample.indexOf("PMpd") >= 0 || sample.indexOf("Penindakan") >= 0) return "Penindakan";
+    }
+    var aSheet = ss.getSheetByName("Akun_dan_ESign") || ss.getSheetByName("Data_Akun") || ss.getSheetByName("Akun");
+    if (aSheet && aSheet.getLastRow() > 1) {
+      var sampleA = String(aSheet.getRange("A2:H2").getValues()[0] || "");
+      if (sampleA.indexOf("Penyidik") >= 0 || sampleA.indexOf("Penindakan") >= 0) return "Penindakan";
+    }
+  } catch(e) {}
+  return "Penuntutan";
+}
+
 function readPermohonan(ss) {
   var sheet = ss.getSheetByName("Data_Permohonan_T10") || ss.getSheetByName("Permohonan_T10");
   if (!sheet) return [];
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   var list = [];
+  var defaultDir = getSpreadsheetDefaultDir(ss);
 
   var header = data[0];
   var headerStr = header.map(function(h) { return String(h).toLowerCase(); });
@@ -317,18 +339,29 @@ function readPermohonan(ss) {
     var row = data[i];
     if (!row[0]) continue;
 
+    var dirVal = defaultDir;
+    if (hasDir && row[2]) {
+      var dStr = String(row[2]).toLowerCase();
+      if (dStr.indexOf("tindak") >= 0) dirVal = "Penindakan";
+      else if (dStr.indexOf("tuntut") >= 0) dirVal = "Penuntutan";
+    } else if (String(row[0] || "").indexOf("PMpd") >= 0) {
+      dirVal = "Penindakan";
+    } else if (String(row[0] || "").indexOf("PMpt") >= 0) {
+      dirVal = "Penuntutan";
+    }
+
     if (hasDir) {
       // 27 Kolom dengan Direktorat
       list.push({
         id: "p-sheet-" + i,
         nomorSurat: String(row[0] || ""),
         nomorUrut: Number(row[1]) || i,
-        direktorat: (String(row[2] || "").toLowerCase().includes("tindak") ? "Penindakan" : "Penuntutan"),
+        direktorat: dirVal,
         tahun: 2026,
         createdAt: row[3] ? new Date(row[3]).toISOString() : new Date().toISOString(),
         namaPemohon: String(row[4] || ""),
         nikPemohon: String(row[5] || "").replace(/^'/, ""),
-        noWhatsApp: String(row[6] || ""),
+        noWhatsApp: String(row[6] || "").replace(/^'/, ""),
         hubungan: String(row[7] || "Keluarga Inti"),
         alamatPemohon: String(row[8] || ""),
         pekerjaanPemohon: String(row[9] || ""),
@@ -355,12 +388,12 @@ function readPermohonan(ss) {
         id: "p-sheet-" + i,
         nomorSurat: String(row[0] || ""),
         nomorUrut: Number(row[1]) || i,
-        direktorat: String(row[0] || "").includes("PMpd") ? "Penindakan" : "Penuntutan",
+        direktorat: dirVal,
         tahun: 2026,
         createdAt: row[2] ? new Date(row[2]).toISOString() : new Date().toISOString(),
         namaPemohon: String(row[3] || ""),
         nikPemohon: String(row[4] || "").replace(/^'/, ""),
-        noWhatsApp: String(row[5] || ""),
+        noWhatsApp: String(row[5] || "").replace(/^'/, ""),
         hubungan: String(row[6] || "Keluarga Inti"),
         alamatPemohon: String(row[7] || ""),
         pekerjaanPemohon: String(row[8] || ""),
@@ -393,6 +426,7 @@ function readTahanan(ss) {
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   var list = [];
+  var defaultDir = getSpreadsheetDefaultDir(ss);
 
   var header = data[0];
   var headerStr = header.map(function(h) { return String(h).toLowerCase(); });
@@ -402,12 +436,19 @@ function readTahanan(ss) {
     var row = data[i];
     if (!row[0] && !row[1]) continue;
 
+    var dirVal = defaultDir;
+    if (hasDir && row[2]) {
+      var dStr = String(row[2]).toLowerCase();
+      if (dStr.indexOf("tindak") >= 0) dirVal = "Penindakan";
+      else if (dStr.indexOf("tuntut") >= 0) dirVal = "Penuntutan";
+    }
+
     if (hasDir) {
       list.push({
         id: String(row[0] || ("t-" + i)),
         namaLengkap: String(row[1] || ""),
         namaTahanan: String(row[1] || ""),
-        direktorat: String(row[2] || "").toLowerCase().includes("tindak") ? "Penindakan" : "Penuntutan",
+        direktorat: dirVal,
         pangkatNrpTahanan: String(row[3] || "-"),
         satuanTahanan: String(row[4] || "-"),
         tempatLahir: String(row[5] || ""),
@@ -427,7 +468,7 @@ function readTahanan(ss) {
         id: String(row[0] || ("t-" + i)),
         namaLengkap: String(row[1] || ""),
         namaTahanan: String(row[1] || ""),
-        direktorat: "Penuntutan",
+        direktorat: defaultDir,
         pangkatNrpTahanan: String(row[2] || "-"),
         satuanTahanan: String(row[3] || "-"),
         tempatLahir: String(row[4] || ""),
@@ -453,6 +494,7 @@ function readAkun(ss) {
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   var list = [];
+  var defaultDir = getSpreadsheetDefaultDir(ss);
 
   var header = data[0];
   var headerStr = header.map(function(h) { return String(h).toLowerCase(); });
@@ -462,11 +504,18 @@ function readAkun(ss) {
     var row = data[i];
     if (!row[0] && !row[1]) continue;
 
+    var dirVal = defaultDir;
+    if (hasDir && row[2]) {
+      var dStr = String(row[2]).toLowerCase();
+      if (dStr.indexOf("tindak") >= 0) dirVal = "Penindakan";
+      else if (dStr.indexOf("tuntut") >= 0) dirVal = "Penuntutan";
+    }
+
     if (hasDir) {
       list.push({
         id: String(row[0] || ("a-" + i)),
         nama: String(row[1] || ""),
-        direktorat: String(row[2] || "").toLowerCase().includes("tindak") ? "Penindakan" : "Penuntutan",
+        direktorat: dirVal,
         nip: String(row[3] || "").replace(/^'/, ""),
         tipeIdentitas: String(row[4] || "NIP"),
         pangkat: String(row[5] || ""),
@@ -475,13 +524,13 @@ function readAkun(ss) {
         username: String(row[8] || ""),
         password: String(row[9] || ""),
         email: String(row[10] || ""),
-        noHp: String(row[11] || ""),
+        noHp: String(row[11] || "").replace(/^'/, ""),
         eSignEnabled: String(row[12]).toUpperCase() === "AKTIF",
         fotoTandaTangan: String(row[13] || "")
       });
     } else {
       var r = String(row[6] || "Staff");
-      var d = "Penuntutan";
+      var d = defaultDir;
       if (r.toLowerCase().includes("penyidik") || String(row[5] || "").toLowerCase().includes("penindakan")) {
         d = "Penindakan";
       }
@@ -497,7 +546,7 @@ function readAkun(ss) {
         username: String(row[7] || ""),
         password: String(row[8] || ""),
         email: String(row[9] || ""),
-        noHp: String(row[10] || ""),
+        noHp: String(row[10] || "").replace(/^'/, ""),
         eSignEnabled: String(row[11]).toUpperCase() === "AKTIF",
         fotoTandaTangan: String(row[12] || "")
       });
@@ -507,96 +556,25 @@ function readAkun(ss) {
 }
 `;
 
-import { PermohonanT10, SystemSettings, AkunUser, Tahanan } from '../types';
-
-export const INITIAL_SEED_AKUN: AkunUser[] = [
-  {
-    id: "a-penuntutan-admin",
-    nama: "Administrator Penuntutan",
-    nip: "198001012005011001",
-    tipeIdentitas: "NIP",
-    pangkat: "Jaksa Madya (IV/a)",
-    jabatan: "Admin Subdit Penuntutan",
-    role: "Admin",
-    direktorat: "Penuntutan",
-    email: "admin.penuntutan@kejaksaan.go.id",
-    noHp: "081234567890",
-    username: "admin_penuntutan",
-    password: "admin123",
-    eSignEnabled: false,
-    fotoTandaTangan: ""
-  },
-  {
-    id: "a-penuntutan-puk",
-    nama: "Arinto Kusumo, S.H., M.H.",
-    nip: "197804222002121003",
-    tipeIdentitas: "NIP",
-    pangkat: "Jaksa Madya (IV/a)",
-    jabatan: "Penuntut Umum Koneksitas",
-    role: "Penuntut Umum Koneksitas",
-    direktorat: "Penuntutan",
-    email: "arinto.kusumo@kejaksaan.go.id",
-    noHp: "081288009988",
-    username: "jaksa_penuntutan",
-    password: "admin123",
-    eSignEnabled: true,
-    fotoTandaTangan: ""
-  },
-  {
-    id: "a-penindakan-admin",
-    nama: "Administrator Penindakan",
-    nip: "198203152006041002",
-    tipeIdentitas: "NIP",
-    pangkat: "Jaksa Muda (III/d)",
-    jabatan: "Admin Subdit Penindakan",
-    role: "Admin",
-    direktorat: "Penindakan",
-    email: "admin.penindakan@kejaksaan.go.id",
-    noHp: "081398765432",
-    username: "admin_penindakan",
-    password: "admin123",
-    eSignEnabled: false,
-    fotoTandaTangan: ""
-  },
-  {
-    id: "a-penindakan-penyidik",
-    nama: "Bambang Triyono, S.H., M.H.",
-    nip: "197905102003121002",
-    tipeIdentitas: "NIP",
-    pangkat: "Jaksa Madya (IV/a)",
-    jabatan: "Penyidik Koneksitas",
-    role: "Penyidik Koneksitas",
-    direktorat: "Penindakan",
-    email: "penyidik.penindakan@kejaksaan.go.id",
-    noHp: "081289001122",
-    username: "penyidik_penindakan",
-    password: "admin123",
-    eSignEnabled: true,
-    fotoTandaTangan: ""
-  }
-];
-
-export const INITIAL_SEED_TAHANAN: Tahanan[] = [];
-
-export const INITIAL_SEED_PERMOHONAN: PermohonanT10[] = [];
+import { SystemSettings } from '../types';
 
 export const DEFAULT_SETTINGS: SystemSettings = {
   // Spreadsheet & Webhook Penuntutan
-  googleAppsScriptUrl: "https://script.google.com/macros/s/AKfycbyU4X1mYGhuQ_3CliJD8WT4U5mp4vwNOnNUg-0b4uWF2jHVBxXiZ-X7GdnBq3IJPN1XiQ/exec",
+  googleAppsScriptUrl: "https://script.google.com/macros/s/AKfycbxeCW1GRRFN3J96JvOQquK0F5CijcTAs6fjQfHtItofVfBp4IS8Su9T7WRWhYyDqLdnFQ/exec",
   spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1_98HePK55aFpwm9eNpeMBjQZU8nH1wg0bN7m7U-tiV4/edit?usp=sharing",
   
   // Spreadsheet & Webhook Penindakan (Terpisah)
-  googleAppsScriptUrlPenindakan: "",
+  googleAppsScriptUrlPenindakan: "https://script.google.com/macros/s/AKfycbzulziFF4UIwA3wYEqVhYAomOSDOoZh6GRjFfK693hirRIb7mmPPypYj7nGjP4hvS5t/exec",
   spreadsheetUrlPenindakan: "https://docs.google.com/spreadsheets/d/penindakan-spreadsheet-id/edit?usp=sharing",
   
   googleDocTemplateUrl: "https://docs.google.com/document/d/1EvD3bMe-K_6-RliZa6kdbed6Ef_IRdlb/edit?usp=sharing&ouid=109982999574552257586&rtpof=true&sd=true",
   waGatewayProvider: "simulasi" as const,
   waApiKey: "",
-  waAdminPhone: "081288009988",
+  waAdminPhone: "",
   autoSyncSheets: true,
   autoNotifyWa: true,
-  pejabatNama: "Arinto Kusumo, S.H., M.H.",
-  pejabatPangkat: "Jaksa Madya",
-  pejabatNip: "197804222002121003",
-  pejabatJabatan: "Kasi Subdit Koordinasi Penuntutan Perkara Koneksitas",
+  pejabatNama: "",
+  pejabatPangkat: "",
+  pejabatNip: "",
+  pejabatJabatan: "",
 };

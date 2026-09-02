@@ -6,6 +6,7 @@ import {
 import { PermohonanT10, StatusPermohonan, Direktorat } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { SuratT10Viewer } from './SuratT10Viewer';
+import { LoadingScreen } from './LoadingScreen';
 import { DEFAULT_SETTINGS } from '../data/blueprintData';
 import { formatIndonesianDate } from '../utils/validation';
 
@@ -21,7 +22,6 @@ export const AdminKunjunganPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Semua');
-  const [activeTabDir, setActiveTabDir] = useState<Direktorat | 'Semua'>('Semua');
   const [viewingDoc, setViewingDoc] = useState<PermohonanT10 | null>(null);
   const [viewKtpItem, setViewKtpItem] = useState<PermohonanT10 | null>(null);
   const navigate = useNavigate();
@@ -29,56 +29,60 @@ export const AdminKunjunganPage: React.FC = () => {
   const currentUserStr = localStorage.getItem('userAccount');
   const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
   const currentUserRole: string = currentUser?.role || '';
+  const userDir: Direktorat = currentUser?.direktorat || 'Penuntutan';
+  const isAdmin = currentUserRole === 'Admin';
   const isSigner = currentUserRole === 'Penuntut Umum Koneksitas' || currentUserRole === 'Penyidik Koneksitas';
 
   useEffect(() => { 
-    if (currentUser?.direktorat) {
-      setActiveTabDir(currentUser.direktorat);
-    }
     fetchData(); 
-  }, []);
-
-  if (isSigner) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-32 gap-4">
-        <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-          <Lock className="w-10 h-10 text-amber-500" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-800">Akses Terbatas</h2>
-        <p className="text-sm text-slate-500 text-center max-w-sm">
-          Halaman <strong>Data Kunjungan</strong> tidak tersedia untuk role <strong>{currentUserRole}</strong>.<br />
-          Gunakan <strong>Dashboard</strong> untuk melihat dan menyetujui permohonan kunjungan.
-        </p>
-      </div>
-    );
-  }
+  }, [userDir]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const resp = await fetch('/api/permohonan');
+      const resp = await fetch(`/api/permohonan?direktorat=${userDir}`, {
+        headers: {
+          'x-user-role': currentUserRole,
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        }
+      });
       const json = await resp.json();
-      if (json.status === 'success') {
+      if (json.status === 'success' && Array.isArray(json.data)) {
         setList(json.data.sort((a: PermohonanT10, b: PermohonanT10) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         ));
       }
     } catch (err) { console.error(err); }
     finally { setIsLoading(false); }
   };
 
-  const handleDeletePermohonan = async (id: string, nomorSurat: string) => {
-    if (!confirm(`Hapus data permohonan kunjungan ${nomorSurat}?`)) return;
+  const [deleteTarget, setDeleteTarget] = useState<PermohonanT10 | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const resp = await fetch(`/api/permohonan/${id}`, { method: 'DELETE' });
+      const resp = await fetch(`/api/permohonan/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentUserRole,
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        }
+      });
       const json = await resp.json();
       if (json.status === 'success') {
+        setDeleteTarget(null);
         fetchData();
       } else {
         alert(json.message || 'Gagal menghapus data.');
       }
     } catch (err) {
       alert('Terjadi kesalahan saat menghapus data.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -97,14 +101,14 @@ export const AdminKunjunganPage: React.FC = () => {
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const link = document.createElement('a');
     link.href = encodeURI(csvContent);
-    link.download = `data_kunjungan_${activeTabDir.toLowerCase()}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `data_kunjungan_${userDir.toLowerCase()}_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const filtered = list.filter(p => {
-    const matchDir = activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir;
+    const matchDir = (p.direktorat || 'Penuntutan') === userDir;
     const q = searchQuery.toLowerCase().trim();
     const matchQ = !q ||
       p.namaPemohon.toLowerCase().includes(q) ||
@@ -117,12 +121,31 @@ export const AdminKunjunganPage: React.FC = () => {
   });
 
   const counts = {
-    total: list.filter(p => activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir).length,
-    diproses: list.filter(p => (activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir) && p.status === 'Diproses').length,
-    disetujui: list.filter(p => (activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir) && p.status === 'Disetujui').length,
-    ditolak: list.filter(p => (activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir) && p.status === 'Ditolak').length,
-    selesai: list.filter(p => (activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir) && p.status === 'Selesai').length,
+    total: list.filter(p => (p.direktorat || 'Penuntutan') === userDir).length,
+    diproses: list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === 'Diproses').length,
+    disetujui: list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === 'Disetujui').length,
+    ditolak: list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === 'Ditolak').length,
+    selesai: list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === 'Selesai').length,
   };
+
+  if (isSigner) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-32 gap-4">
+        <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mb-2">
+          <Lock className="w-10 h-10 text-amber-500" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800">Akses Terbatas</h2>
+        <p className="text-sm text-slate-500 text-center max-w-sm">
+          Halaman <strong>Data Kunjungan</strong> tidak tersedia untuk role <strong>{currentUserRole}</strong>.<br />
+          Gunakan <strong>Dashboard</strong> untuk melihat dan menyetujui permohonan kunjungan Direktorat {userDir}.
+        </p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return <LoadingScreen message={`Memuat Rekap Data Kunjungan (Direktorat ${userDir})...`} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -224,24 +247,20 @@ export const AdminKunjunganPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs Filter Direktorat */}
-      <div className="flex border-b border-slate-200 gap-2">
-        {(['Semua', 'Penuntutan', 'Penindakan'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTabDir(tab)}
-            className={`px-4 py-2.5 text-sm font-bold border-b-2 transition ${
-              activeTabDir === tab
-                ? 'border-[#0a2e1e] text-[#0a2e1e]'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {tab === 'Semua' ? 'Semua Kunjungan' : `Kunjungan ${tab}`}
-            <span className="ml-2 text-xs py-0.5 px-2 rounded-full bg-slate-100 text-slate-600">
-              {tab === 'Semua' ? list.length : list.filter(p => (p.direktorat || 'Penuntutan') === tab).length}
-            </span>
-          </button>
-        ))}
+      {/* Dedicated Directorate Banner */}
+      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white px-5 py-3.5 rounded-2xl border border-emerald-800 shadow-md flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0">
+            <ClipboardList className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Rekap Data Kunjungan</p>
+            <h3 className="text-sm font-bold text-white">Direktorat {userDir} · JAMPIDMIL</h3>
+          </div>
+        </div>
+        <div className="text-xs bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-slate-200">
+          Total Permohonan: <strong className="text-amber-300 ml-1">{counts.total}</strong>
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -304,7 +323,7 @@ export const AdminKunjunganPage: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
             >
-              {st} {st !== 'Semua' && `(${list.filter(p => (activeTabDir === 'Semua' || (p.direktorat || 'Penuntutan') === activeTabDir) && p.status === st).length})`}
+              {st} {st !== 'Semua' && `(${list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === st).length})`}
             </button>
           ))}
         </div>
@@ -397,12 +416,14 @@ export const AdminKunjunganPage: React.FC = () => {
                         >
                           <Download className="w-3.5 h-3.5" /> KTP
                         </button>
-                        <button
-                          onClick={() => handleDeletePermohonan(p.id, p.nomorSurat)}
-                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-semibold hover:underline transition ml-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Hapus
-                        </button>
+                        {(isAdmin || currentUserRole === 'Staff') && (
+                          <button
+                            onClick={() => setDeleteTarget(p)}
+                            className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-semibold hover:underline transition ml-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Hapus
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -422,6 +443,46 @@ export const AdminKunjunganPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Permohonan Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="bg-red-50 border-b border-red-100 p-5 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-slate-900 text-base">Hapus Data Permohonan?</h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Apakah Anda yakin ingin menghapus permohonan No. <strong className="text-slate-900">{deleteTarget.nomorSurat}</strong> atas nama pemohon <strong className="text-slate-900">{deleteTarget.namaPemohon}</strong> (Tahanan: {deleteTarget.namaTahanan})?
+                </p>
+                <p className="text-[11px] text-red-600 font-medium mt-1.5">
+                  *Tindakan ini akan menghapus data dari sistem dan menyinkronkan ke Spreadsheet.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-100 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {isDeleting ? 'Menghapus...' : 'Ya, Hapus Permohonan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

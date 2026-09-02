@@ -14,14 +14,16 @@ import {
   Upload,
   PenLine,
   User,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { AkunUser } from '../types';
-import { compressBase64Image } from '../utils/validation';
+import { compressBase64Image, normalizePhoneNumber } from '../utils/validation';
 
 const ALL_NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, roles: ['Admin', 'Staff', 'Penuntut Umum Koneksitas', 'Penyidik Koneksitas'] },
   { to: '/admin/kunjungan', label: 'Data Kunjungan', icon: ClipboardList, exact: false, roles: ['Admin', 'Staff'] },
-  { to: '/admin/tahanan', label: 'Data Tahanan', icon: Users, exact: false, roles: ['Admin', 'Staff'] },
+  { to: '/admin/tahanan', label: 'Data Tahanan', icon: Users, exact: false, roles: ['Admin', 'Staff', 'Penuntut Umum Koneksitas', 'Penyidik Koneksitas'] },
   { to: '/admin/akun', label: 'Akun & E-Sign', icon: UserCog, exact: false, roles: ['Admin'] },
 ];
 
@@ -42,6 +44,8 @@ export const AdminLayout: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileForm, setProfileForm] = useState<Partial<AkunUser>>({});
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,10 +69,12 @@ export const AdminLayout: React.FC = () => {
 
   const handleOpenProfileModal = () => {
     if (currentUser) {
-      setProfileForm({ ...currentUser });
+      setProfileForm({ ...currentUser, noHp: normalizePhoneNumber(currentUser.noHp) });
     } else {
       setProfileForm({ nama: '', nip: '', pangkat: '', jabatan: '', role: 'Admin', email: '', noHp: '', username: '', password: '', eSignEnabled: false });
     }
+    setProfileSuccess(false);
+    setProfileError('');
     setShowProfileModal(true);
   };
 
@@ -87,23 +93,42 @@ export const AdminLayout: React.FC = () => {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
+    setProfileSuccess(false);
+    setProfileError('');
     try {
       const isEdit = !!profileForm.id;
       const url = isEdit ? `/api/akun/${profileForm.id}` : '/api/akun';
       const method = isEdit ? 'PUT' : 'POST';
-      const resp = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profileForm) });
+      const payload = {
+        ...profileForm,
+        noHp: normalizePhoneNumber(profileForm.noHp),
+        direktorat: currentUser?.direktorat || profileForm.direktorat || 'Penuntutan',
+      };
+      const resp = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || 'Staff',
+          'x-user-direktorat': currentUser?.direktorat || 'Penuntutan',
+          'x-user-nip': currentUser?.nip || '',
+        },
+        body: JSON.stringify(payload)
+      });
       const json = await resp.json();
       if (resp.ok && json.status === 'success') {
         const updated = json.data;
         localStorage.setItem('userAccount', JSON.stringify(updated));
         setCurrentUser(updated);
-        setShowProfileModal(false);
-        alert('Profil berhasil diperbarui!');
+        setProfileSuccess(true);
+        setTimeout(() => {
+          setShowProfileModal(false);
+          setProfileSuccess(false);
+        }, 1500);
       } else {
-        alert(json.message || 'Gagal menyimpan profil.');
+        setProfileError(json.message || 'Gagal menyimpan profil.');
       }
     } catch {
-      alert('Terjadi kesalahan saat menyimpan profil.');
+      setProfileError('Terjadi kesalahan saat menyimpan profil.');
     } finally {
       setIsSavingProfile(false);
     }
@@ -148,9 +173,14 @@ export const AdminLayout: React.FC = () => {
             </div>
             <div className="overflow-hidden flex-1">
               <p className="text-xs font-bold text-white truncate">{currentUser?.nama || 'Administrator'}</p>
-              <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 ${ROLE_BADGE[currentUser?.role || 'Admin'] || 'bg-slate-100 text-slate-700'}`}>
-                {currentUser?.role || 'Admin'}
-              </span>
+              <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_BADGE[currentUser?.role || 'Admin'] || 'bg-slate-100 text-slate-700'}`}>
+                  {currentUser?.role || 'Admin'}
+                </span>
+                <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-900/80 text-emerald-200 border border-emerald-700/60">
+                  Dit. {currentUser?.direktorat || 'Penuntutan'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -226,81 +256,158 @@ export const AdminLayout: React.FC = () => {
 
       {/* Edit Profile Modal */}
       {showProfileModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl max-h-[92vh] overflow-y-auto border border-slate-200 animate-in zoom-in-95 duration-150">
+            {/* Header */}
             <div className="sticky top-0 bg-emerald-950 text-white px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
               <div>
-                <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Pengaturan Akun</p>
-                <h3 className="font-bold text-white">Profil Pengguna</h3>
+                <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Akun Saya</p>
+                <h3 className="font-bold text-white">Edit Profil Pengguna</h3>
               </div>
-              <button onClick={() => setShowProfileModal(false)} className="text-slate-300 hover:text-white p-1 rounded-lg">
+              <button onClick={() => setShowProfileModal(false)} className="text-slate-300 hover:text-white p-1.5 rounded-lg hover:bg-emerald-800 transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveProfile} className="p-6 space-y-4">
+              {/* Success / Error Banner */}
+              {profileSuccess && (
+                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm font-semibold animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" /> Profil berhasil diperbarui!
+                </div>
+              )}
+              {profileError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {profileError}
+                </div>
+              )}
+
+              {/* Direktorat (read-only) */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Direktorat <span className="text-slate-400 font-normal">(tidak dapat diubah)</span></label>
                 <input
+                  type="text"
+                  disabled
+                  value={`Direktorat ${currentUser?.direktorat || 'Penuntutan'}`}
+                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-500 cursor-not-allowed"
+                />
+              </div>
+
+              {/* Nama */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nama Lengkap & Gelar <span className="text-red-500">*</span></label>
+                <input
+                  required
                   type="text"
                   value={profileForm.nama || ''}
                   onChange={e => setProfileForm({ ...profileForm, nama: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {/* Tipe Identitas + NIP/NRP */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">NIP / NRP</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tipe ID</label>
+                  <select
+                    value={profileForm.tipeIdentitas || 'NIP'}
+                    onChange={e => setProfileForm({ ...profileForm, tipeIdentitas: e.target.value as 'NIP' | 'NRP' })}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                  >
+                    <option value="NIP">NIP</option>
+                    <option value="NRP">NRP</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">{profileForm.tipeIdentitas || 'NIP'}</label>
                   <input
                     type="text"
                     value={profileForm.nip || ''}
                     onChange={e => setProfileForm({ ...profileForm, nip: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pangkat</label>
-                  <input
-                    type="text"
-                    value={profileForm.pangkat || ''}
-                    onChange={e => setProfileForm({ ...profileForm, pangkat: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
-                <input
-                  type="text"
-                  value={profileForm.jabatan || ''}
-                  onChange={e => setProfileForm({ ...profileForm, jabatan: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Username</label>
-                  <input
-                    type="text"
-                    value={profileForm.username || ''}
-                    onChange={e => setProfileForm({ ...profileForm, username: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Password Baru (opsional)</label>
-                  <input
-                    type="password"
-                    placeholder="Kosongkan jika tidak ubah"
-                    onChange={e => {
-                      if (e.target.value) setProfileForm({ ...profileForm, password: e.target.value });
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    placeholder="Masukkan NIP/NRP"
                   />
                 </div>
               </div>
 
-              {/* E-Sign Upload */}
+              {/* Pangkat + Jabatan */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pangkat / Golongan</label>
+                  <input
+                    type="text"
+                    value={profileForm.pangkat || ''}
+                    onChange={e => setProfileForm({ ...profileForm, pangkat: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    placeholder="misal: Letkol"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Jabatan Dinas</label>
+                  <input
+                    type="text"
+                    value={profileForm.jabatan || ''}
+                    onChange={e => setProfileForm({ ...profileForm, jabatan: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    placeholder="misal: Penuntut Umum"
+                  />
+                </div>
+              </div>
+
+              {/* Email + No HP */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Dinas</label>
+                  <input
+                    type="email"
+                    value={profileForm.email || ''}
+                    onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    placeholder="nama@kejaksaan.go.id"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">No. HP / WhatsApp</label>
+                  <input
+                    type="text"
+                    value={profileForm.noHp || ''}
+                    onChange={e => setProfileForm({ ...profileForm, noHp: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    placeholder="08xxxxxxxxxx"
+                  />
+                </div>
+              </div>
+
+              {/* Username + Password */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Username Login <span className="text-red-500">*</span></label>
+                  <input
+                    required
+                    type="text"
+                    value={profileForm.username || ''}
+                    onChange={e => setProfileForm({ ...profileForm, username: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Password Baru <span className="text-slate-400 font-normal">(opsional)</span></label>
+                  <input
+                    type="password"
+                    placeholder="Kosongkan jika tidak diubah"
+                    onChange={e => {
+                      if (e.target.value) setProfileForm({ ...profileForm, password: e.target.value });
+                      else {
+                        const { password, ...rest } = profileForm as any;
+                        setProfileForm(rest);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                  />
+                </div>
+              </div>
+
+              {/* E-Sign Section */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -317,11 +424,10 @@ export const AdminLayout: React.FC = () => {
                     <div className="w-9 h-5 bg-slate-300 peer-checked:bg-emerald-600 rounded-full transition after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
                   </label>
                 </div>
-
                 {profileForm.eSignEnabled && (
                   <div>
                     <div
-                      className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-3 flex flex-col items-center cursor-pointer transition"
+                      className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-3 flex flex-col items-center cursor-pointer transition min-h-[80px] justify-center"
                       onClick={() => signatureInputRef.current?.click()}
                     >
                       {profileForm.fotoTandaTangan ? (
@@ -329,7 +435,7 @@ export const AdminLayout: React.FC = () => {
                       ) : (
                         <>
                           <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                          <p className="text-[11px] text-slate-500">Klik untuk upload tanda tangan (PNG)</p>
+                          <p className="text-[11px] text-slate-500">Klik untuk upload tanda tangan (PNG/JPG)</p>
                         </>
                       )}
                     </div>
@@ -338,21 +444,22 @@ export const AdminLayout: React.FC = () => {
                 )}
               </div>
 
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              {/* Actions */}
+              <div className="pt-3 flex justify-end gap-2.5 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowProfileModal(false)}
-                  className="px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-semibold"
+                  className="px-4 py-2.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-semibold transition"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  disabled={isSavingProfile}
-                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-900 hover:bg-emerald-950 text-amber-300 rounded-xl text-xs font-bold shadow-md transition disabled:opacity-60"
+                  disabled={isSavingProfile || profileSuccess}
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-emerald-900 hover:bg-emerald-950 text-amber-300 rounded-xl text-xs font-bold shadow-md transition disabled:opacity-60"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  {isSavingProfile ? 'Menyimpan...' : 'Simpan Profil'}
+                  {isSavingProfile ? 'Menyimpan...' : profileSuccess ? 'Tersimpan!' : 'Simpan Profil'}
                 </button>
               </div>
             </form>

@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { PermohonanT10, StatusPermohonan, SystemSettings, Direktorat } from '../types';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../data/blueprintData';
-import { formatIndonesianDate } from '../utils/validation';
+import { formatIndonesianDate, compressBase64Image } from '../utils/validation';
 
 interface AdminDashboardProps {
   permohonanList: PermohonanT10[];
@@ -77,6 +77,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isUpdating, setIsUpdating] = useState(false);
   const [viewKtpItem, setViewKtpItem] = useState<PermohonanT10 | null>(null);
 
+  // Signer explicit form states for ACC / Approval
+  const [signerNama, setSignerNama] = useState('');
+  const [signerPangkat, setSignerPangkat] = useState('');
+  const [signerNip, setSignerNip] = useState('');
+  const [signerTipeId, setSignerTipeId] = useState<'NIP' | 'NRP'>('NIP');
+  const [signerJabatan, setSignerJabatan] = useState('');
+  const [signerTtdUrl, setSignerTtdUrl] = useState('');
+  const modalSignatureRef = React.useRef<HTMLInputElement>(null);
+
   const loggedInUserRaw = localStorage.getItem('userAccount');
   const currentUser = loggedInUserRaw ? JSON.parse(loggedInUserRaw) : null;
   const isStaff = currentUser?.role === 'Staff';
@@ -85,40 +94,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const isSigner = isPUK || isPenyidik;
   const isAdmin = currentUser?.role === 'Admin';
 
-  React.useEffect(() => {
-    if (currentUser?.direktorat) {
-      setActiveTabDir(currentUser.direktorat);
-    }
+  const userDir: Direktorat = currentUser?.direktorat || 'Penuntutan';
 
-    fetch('/api/akun')
+  React.useEffect(() => {
+    setActiveTabDir(userDir);
+
+    fetch(`/api/akun?direktorat=${userDir}`, {
+      headers: {
+        'x-user-role': currentUser?.role || '',
+        'x-user-direktorat': userDir,
+        'x-user-nip': currentUser?.nip || '',
+      }
+    })
       .then(r => r.json())
       .then(json => {
         if (json.status === 'success' && Array.isArray(json.data)) {
           setAkunList(json.data);
-          if (isSigner) {
-            const myAkun = json.data.find((a: any) => a.nip === currentUser.nip || a.nama === currentUser.nama);
-            if (myAkun) setSelectedAkunId(myAkun.id);
-          } else {
-            const defaultSigner = json.data.find((a: any) => a.role === 'Penuntut Umum Koneksitas' || a.role === 'Penyidik Koneksitas');
-            if (defaultSigner) setSelectedAkunId(defaultSigner.id);
-          }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [userDir]);
 
   // Settings Modal State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [tempSettings, setTempSettings] = useState<SystemSettings>({ ...systemSettings });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
   const [testGasStatus, setTestGasStatus] = useState<{ loading: boolean; result?: any; error?: string }>({ loading: false });
   const [testGasPenindakanStatus, setTestGasPenindakanStatus] = useState<{ loading: boolean; result?: any; error?: string }>({ loading: false });
   const [testWaStatus, setTestWaStatus] = useState<{ loading: boolean; result?: any; error?: string }>({ loading: false });
 
-  // Filtered List
+  // Filtered List - STRICTLY FILTERED TO USER DIREKTORAT
   const filteredList = useMemo(() => {
     return permohonanList.filter((item) => {
-      const matchDir = activeTabDir === 'Semua' || (item.direktorat || 'Penuntutan') === activeTabDir;
+      const matchDir = (item.direktorat || 'Penuntutan') === userDir;
       const matchStatus = filterStatus === 'Semua' || item.status === filterStatus;
       const q = searchQuery.toLowerCase().trim();
       const matchQuery =
@@ -132,13 +142,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       return matchDir && matchStatus && matchQuery;
     });
-  }, [permohonanList, activeTabDir, filterStatus, searchQuery]);
+  }, [permohonanList, userDir, filterStatus, searchQuery]);
 
-  // Metric Counters
+  // Metric Counters - STRICTLY FOR USER DIREKTORAT
   const counts = useMemo(() => {
-    const list = activeTabDir === 'Semua' 
-      ? permohonanList 
-      : permohonanList.filter(p => (p.direktorat || 'Penuntutan') === activeTabDir);
+    const list = permohonanList.filter(p => (p.direktorat || 'Penuntutan') === userDir);
     return {
       total: list.length,
       diproses: list.filter((p) => p.status === 'Diproses').length,
@@ -146,7 +154,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ditolak: list.filter((p) => p.status === 'Ditolak').length,
       selesai: list.filter((p) => p.status === 'Selesai').length,
     };
-  }, [permohonanList, activeTabDir]);
+  }, [permohonanList, userDir]);
 
   const handleOpenEditModal = (item: PermohonanT10) => {
     setSelectedItem(item);
@@ -154,18 +162,71 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditCatatan(item.catatanPetugas || '');
     setEditPetugas(item.namaPetugasPemeriksa || currentUser?.nama || 'Petugas JAMPIDMIL');
     
-    // Find matching akun in the same direktorat
     const itemDir = item.direktorat || 'Penuntutan';
-    const matched = akunList.find(a => a.nama === item.penandatanganNama);
-    if (matched) {
-      setSelectedAkunId(matched.id);
+    const expectedRole = itemDir === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas';
+
+    const cleanVal = (v: any) => (!v || v === '-' || v === 'undefined' || v === 'null') ? '' : String(v).trim();
+
+    if (isSigner) {
+      // 100% Otomatis ambil data dari akun Penyidik / Penuntut yang sedang login
+      const myAkun = akunList.find(a => (a.nip && a.nip === currentUser?.nip) || (a.username && a.username === currentUser?.username) || a.nama === currentUser?.nama) || currentUser;
+      
+      const officialNama = cleanVal(myAkun?.nama) || cleanVal(currentUser?.nama) || cleanVal(item.penandatanganNama) || 'Pejabat Koneksitas';
+      const officialPangkat = cleanVal(myAkun?.pangkat) || cleanVal(currentUser?.pangkat) || cleanVal(item.penandatanganPangkat) || (itemDir === 'Penindakan' ? 'Jaksa Madya (IV/a)' : 'Jaksa Utama Muda (IV/c)');
+      const officialNip = cleanVal(myAkun?.nip) || cleanVal(currentUser?.nip) || cleanVal(item.penandatanganNip) || '';
+      const officialTipeId = (myAkun?.tipeIdentitas as any) || (currentUser?.tipeIdentitas as any) || (item.penandatanganTipeIdentitas as any) || 'NIP';
+      const officialJabatan = cleanVal(myAkun?.jabatan) || cleanVal(currentUser?.jabatan) || cleanVal(item.penandatanganJabatan) || (itemDir === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas');
+      const officialTtd = cleanVal(myAkun?.fotoTandaTangan) || cleanVal(currentUser?.fotoTandaTangan) || cleanVal(item.penandatanganTtdUrl) || '';
+
+      setSignerNama(officialNama);
+      setSignerPangkat(officialPangkat);
+      setSignerNip(officialNip);
+      setSignerTipeId(officialTipeId);
+      setSignerJabatan(officialJabatan);
+      setSignerTtdUrl(officialTtd);
     } else {
-      const expectedRole = itemDir === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas';
-      const signer = akunList.find(a => a.role === expectedRole && (a.direktorat || 'Penuntutan') === itemDir) 
+      // Jika Admin / Staff, pilih akun pejabat direktorat yang sesuai secara otomatis
+      const matched = akunList.find(a => cleanVal(item.penandatanganNama) && a.nama === item.penandatanganNama)
+        || akunList.find(a => a.role === expectedRole && (a.direktorat || 'Penuntutan') === itemDir) 
         || akunList.find(a => a.role === expectedRole)
         || akunList[0];
-      setSelectedAkunId(signer?.id || '');
+
+      if (matched) {
+        setSelectedAkunId(matched.id);
+        setSignerNama(cleanVal(item.penandatanganNama) || cleanVal(matched.nama) || '');
+        setSignerPangkat(cleanVal(item.penandatanganPangkat) || cleanVal(matched.pangkat) || (itemDir === 'Penindakan' ? 'Jaksa Madya (IV/a)' : 'Jaksa Utama Muda (IV/c)'));
+        setSignerNip(cleanVal(item.penandatanganNip) || cleanVal(matched.nip) || '');
+        setSignerTipeId((item.penandatanganTipeIdentitas as any) || (matched.tipeIdentitas as any) || 'NIP');
+        setSignerJabatan(cleanVal(item.penandatanganJabatan) || cleanVal(matched.jabatan) || (itemDir === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas'));
+        setSignerTtdUrl(cleanVal(item.penandatanganTtdUrl) || cleanVal(matched.fotoTandaTangan) || '');
+      }
     }
+  };
+
+  const handleSelectSignerAkun = (akunId: string) => {
+    setSelectedAkunId(akunId);
+    const sel = akunList.find(a => a.id === akunId);
+    if (sel) {
+      const cleanVal = (v: any) => (!v || v === '-' || v === 'undefined' || v === 'null') ? '' : String(v).trim();
+      setSignerNama(cleanVal(sel.nama) || '');
+      setSignerPangkat(cleanVal(sel.pangkat) || (selectedItem?.direktorat === 'Penindakan' ? 'Jaksa Madya (IV/a)' : 'Jaksa Utama Muda (IV/c)'));
+      setSignerNip(cleanVal(sel.nip) || '');
+      setSignerTipeId(sel.tipeIdentitas || 'NIP');
+      setSignerJabatan(cleanVal(sel.jabatan) || (selectedItem?.direktorat === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas'));
+      setSignerTtdUrl(cleanVal(sel.fotoTandaTangan) || '');
+    }
+  };
+
+  const handleModalTtdUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const raw = ev.target?.result as string;
+      const compressed = await compressBase64Image(raw, 500, 500, 0.6);
+      setSignerTtdUrl(compressed);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveStatus = async () => {
@@ -173,36 +234,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     setIsUpdating(true);
     try {
-      let penandatanganData;
       const itemDir = selectedItem.direktorat || 'Penuntutan';
-
-      if (isSigner) {
-        const myAkun = akunList.find(a => a.nip === currentUser?.nip || a.nama === currentUser?.nama) || currentUser;
-        penandatanganData = {
-          nama: myAkun?.nama || currentUser?.nama,
-          pangkat: myAkun?.pangkat || currentUser?.pangkat || "Jaksa Madya",
-          nip: myAkun?.nip || currentUser?.nip || "",
-          tipeIdentitas: (myAkun as any)?.tipeIdentitas || (currentUser as any)?.tipeIdentitas || "NIP",
-          jabatan: myAkun?.jabatan || currentUser?.jabatan || (itemDir === 'Penindakan' ? "Penyidik Koneksitas" : "Penuntut Umum Koneksitas"),
-          ttdUrl: myAkun?.fotoTandaTangan || currentUser?.fotoTandaTangan || "",
-        };
-      } else {
-        const selectedAkun = akunList.find(a => a.id === selectedAkunId);
-        penandatanganData = selectedAkun ? {
-          nama: selectedAkun.nama,
-          pangkat: selectedAkun.pangkat,
-          nip: selectedAkun.nip,
-          tipeIdentitas: (selectedAkun as any).tipeIdentitas || "NIP",
-          jabatan: selectedAkun.jabatan,
-          ttdUrl: selectedAkun.fotoTandaTangan,
-        } : undefined;
-      }
+      const defaultRole = itemDir === 'Penindakan' ? "Penyidik Koneksitas" : "Penuntut Umum Koneksitas";
+      
+      const penandatanganData = {
+        nama: signerNama.trim() || currentUser?.nama || (isSigner ? currentUser?.role : "Pejabat Koneksitas"),
+        pangkat: signerPangkat.trim() || "Jaksa Madya (IV/a)",
+        nip: signerNip.trim() || currentUser?.nip || "",
+        tipeIdentitas: signerTipeId || "NIP",
+        jabatan: signerJabatan.trim() || defaultRole,
+        ttdUrl: signerTtdUrl,
+      };
 
       await onUpdateStatus(
         selectedItem.id,
         editStatus,
         editCatatan,
-        penandatanganData?.nama || editPetugas,
+        penandatanganData.nama,
         penandatanganData
       );
       setSelectedItem(null);
@@ -214,19 +262,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Delete confirmation modal state
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; nomorSurat: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PermohonanT10 | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
-  const handleDeletePermohonan = (id: string, nomorSurat: string) => {
-    setDeleteTarget({ id, nomorSurat });
+  const handleDeletePermohonan = (item: PermohonanT10) => {
+    setDeleteTarget(item);
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const resp = await fetch(`/api/permohonan/${deleteTarget.id}`, { method: 'DELETE' });
+      const resp = await fetch(`/api/permohonan/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentUser?.role || '',
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        }
+      });
       const json = await resp.json();
       if (json.status === 'success') {
         setDeleteSuccess(`Data permohonan ${deleteTarget.nomorSurat} berhasil dihapus.`);
@@ -249,6 +304,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsRefreshing(true);
     await onRefresh();
     setTimeout(() => setIsRefreshing(false), 500);
+  };
+
+  const handleSyncAll = async () => {
+    setIsSyncingAll(true);
+    try {
+      const resp = await fetch('/api/sync-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        },
+        body: JSON.stringify({ direktorat: userDir })
+      });
+      const json = await resp.json();
+      if (json.status === 'success') {
+        const msg = `Integrasi Berhasil: ${json.counts?.permohonan || 0} Permohonan, ${json.counts?.tahanan || 0} Tahanan, dan ${json.counts?.akun || 0} Akun disinkronkan ke Spreadsheet Direktorat ${userDir}.`;
+        setSyncSuccess(msg);
+        await onRefresh();
+        setTimeout(() => setSyncSuccess(null), 5000);
+      } else {
+        alert(json.message || 'Gagal sinkronisasi data.');
+      }
+    } catch (err: any) {
+      alert(`Terjadi kesalahan sinkronisasi: ${err.message}`);
+    } finally {
+      setIsSyncingAll(false);
+    }
   };
 
   const handleTestGasWebhook = async (url: string, isPenindakan = false) => {
@@ -414,6 +498,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* Sync Success Toast */}
+      {syncSuccess && (
+        <div className="fixed top-6 right-6 z-50 bg-emerald-900 text-amber-300 px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-3 animate-in text-sm font-semibold border border-amber-500/50 max-w-md">
+          <CheckCircle2 className="w-5 h-5 text-amber-400 shrink-0" />
+          <span className="text-white text-xs">{syncSuccess}</span>
+          <button onClick={() => setSyncSuccess(null)} className="ml-auto text-amber-400 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -424,19 +519,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          {isAdmin && (
-            <button
-              onClick={() => {
-                setTempSettings({ ...systemSettings });
-                setShowSettingsModal(true);
-              }}
-              className="p-2.5 bg-emerald-950 hover:bg-emerald-900 text-amber-400 rounded-xl transition text-xs font-bold flex items-center gap-1.5 shadow-sm border border-amber-500/40"
-            >
-              <Settings className="w-4 h-4" />
-              <span>Integrasi Spreadsheet & WA</span>
-            </button>
-          )}
-
           <button
             id="btn-refresh-data"
             onClick={handleManualRefresh}
@@ -457,24 +539,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      {/* Tabs Filter Direktorat */}
-      <div className="flex border-b border-slate-200 gap-2">
-        {(['Semua', 'Penuntutan', 'Penindakan'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTabDir(tab)}
-            className={`px-4 py-2.5 text-sm font-bold border-b-2 transition ${
-              activeTabDir === tab
-                ? 'border-[#0a2e1e] text-[#0a2e1e]'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {tab === 'Semua' ? 'Semua Direktorat' : `Direktorat ${tab}`}
-            <span className="ml-2 text-xs py-0.5 px-2 rounded-full bg-slate-100 text-slate-600">
-              {tab === 'Semua' ? permohonanList.length : permohonanList.filter(p => (p.direktorat || 'Penuntutan') === tab).length}
-            </span>
-          </button>
-        ))}
+      {/* Dedicated Directorate Banner */}
+      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white px-5 py-4 rounded-2xl border border-emerald-800 shadow-md flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-amber-400/20 text-amber-300 font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-amber-400/30">
+                Wilayah Kerja Terisolasi
+              </span>
+              <span className="text-xs text-slate-300">Role: <strong className="text-white">{currentUser?.role}</strong></span>
+            </div>
+            <h3 className="text-base font-bold text-white mt-0.5">
+              Direktorat {userDir} · JAMPIDMIL Kejaksaan RI
+            </h3>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 bg-white/10 px-3.5 py-1.5 rounded-xl border border-white/10 text-xs text-slate-200">
+          <span>Permohonan Terdaftar:</span>
+          <strong className="text-amber-300 text-sm font-bold">{counts.total}</strong>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -693,7 +779,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {/* Tombol Hapus untuk Admin & Staff */}
                         {(isAdmin || isStaff) && (
                           <button
-                            onClick={() => handleDeletePermohonan(item.id, item.nomorSurat)}
+                            onClick={() => handleDeletePermohonan(item)}
                             title="Hapus Data Kunjungan"
                             className="p-1.5 bg-red-100 hover:bg-red-200 text-red-900 rounded-lg text-xs font-bold transition border border-red-300"
                           >
@@ -800,44 +886,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* Penandatangan Section */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  {isSigner 
-                    ? `Penandatangan Otomatis (${currentUser?.role}):` 
-                    : `Pejabat Penandatangan T-10 (${selectedItem.direktorat === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas'}):`}
-                </label>
-                {isSigner ? (
-                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl space-y-1 text-xs">
-                    <p className="font-bold text-emerald-950 text-sm">
-                      {currentUser?.nama || "Pejabat Koneksitas"}
-                    </p>
-                    <p className="text-emerald-800">
-                      <strong>Jabatan:</strong> {currentUser?.jabatan || currentUser?.role}
-                    </p>
-                    <p className="text-emerald-800 font-mono">
-                      <strong>NIP / NRP:</strong> {currentUser?.nip || "-"}
-                    </p>
-                    <div className="flex items-center gap-2 pt-1 border-t border-emerald-200">
-                      <span className="font-semibold text-emerald-900">E-Sign Digital:</span>
-                      {currentUser?.fotoTandaTangan ? (
-                        <span className="text-emerald-700 font-bold flex items-center gap-1">
-                          ✓ Gambar TTD Siap Dibubuhkan
-                          <img src={currentUser.fotoTandaTangan} alt="TTD" className="h-7 w-20 object-contain border rounded bg-white ml-2" />
-                        </span>
-                      ) : (
-                        <span className="text-amber-700 italic text-[11px]">
-                          (Tercatat secara digital atas nama Anda)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <>
+              {/* Penandatangan & E-Sign Section */}
+              <div className="bg-slate-50 border border-slate-300 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    {isSigner 
+                      ? `Pengesahan T-10 (${currentUser?.role}):` 
+                      : `Pejabat Penandatangan T-10 (${selectedItem.direktorat === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas'}):`}
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    Direktorat {selectedItem.direktorat || 'Penuntutan'}
+                  </span>
+                </div>
+
+                {!isSigner && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Pilih dari Master Akun Pejabat:
+                    </label>
                     <select
                       value={selectedAkunId}
-                      onChange={(e) => setSelectedAkunId(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                      onChange={(e) => handleSelectSignerAkun(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700 font-medium"
                     >
                       <option value="">-- Pilih Pejabat Penandatangan --</option>
                       {akunList
@@ -848,28 +918,110 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </option>
                         ))}
                     </select>
-                    {selectedAkunId && (() => {
-                      const sel = akunList.find(a => a.id === selectedAkunId);
-                      return sel ? (
-                        <div className="mt-2 p-2.5 bg-slate-100 rounded-lg text-xs text-slate-700 space-y-0.5">
-                          <p><strong>Jabatan:</strong> {sel.jabatan}</p>
-                          <p><strong>NIP:</strong> {sel.nip}</p>
-                          <p className="flex items-center gap-2 mt-1">
-                            <strong>E-Sign:</strong>
-                            {sel.fotoTandaTangan ? (
-                              <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                                ✓ TTD Digital Siap
-                                <img src={sel.fotoTandaTangan} alt="ttd" className="h-6 w-16 object-contain border rounded bg-white" />
-                              </span>
-                            ) : (
-                              <span className="text-amber-700 italic">Belum ada upload gambar TTD</span>
-                            )}
-                          </p>
-                        </div>
-                      ) : null;
-                    })()}
-                  </>
+                  </div>
                 )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nama Lengkap Pejabat:
+                    </label>
+                    <input
+                      type="text"
+                      value={signerNama}
+                      onChange={e => setSignerNama(e.target.value)}
+                      placeholder="Contoh: Bambang Triyono, S.H., M.H."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Pangkat / Golongan:
+                    </label>
+                    <input
+                      type="text"
+                      value={signerPangkat}
+                      onChange={e => setSignerPangkat(e.target.value)}
+                      placeholder="Contoh: Jaksa Madya (IV/a)"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      NIP / NRP:
+                    </label>
+                    <input
+                      type="text"
+                      value={signerNip}
+                      onChange={e => setSignerNip(e.target.value)}
+                      placeholder="NIP atau NRP Pejabat..."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Jabatan Naskah Dinas:
+                    </label>
+                    <input
+                      type="text"
+                      value={signerJabatan}
+                      onChange={e => setSignerJabatan(e.target.value)}
+                      placeholder={selectedItem.direktorat === 'Penindakan' ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas'}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Upload Gambar Tanda Tangan */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                    <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                      Gambar Tanda Tangan (PNG / JPG Transparan):
+                    </span>
+                    <input
+                      type="file"
+                      ref={modalSignatureRef}
+                      onChange={handleModalTtdUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => modalSignatureRef.current?.click()}
+                      className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-amber-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 rotate-180" />
+                      {signerTtdUrl ? 'Ganti Gambar TTD' : 'Unggah Gambar TTD'}
+                    </button>
+                  </div>
+
+                  {signerTtdUrl ? (
+                    <div className="p-2 bg-white border border-emerald-300 rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <img src={signerTtdUrl} alt="Preview TTD" className="h-10 max-w-[120px] object-contain border rounded bg-slate-50 p-1" />
+                        <div>
+                          <p className="text-xs font-bold text-emerald-900">Gambar TTD Siap Dibubuhkan</p>
+                          <p className="text-[10px] text-slate-500">Akan dicetak pada dokumen Surat T-10</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSignerTtdUrl('')}
+                        className="text-xs text-red-600 hover:text-red-800 font-semibold"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
+                      <span>⚠️ Belum ada file gambar tanda tangan. Klik tombol di atas untuk mengunggah.</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 flex items-start gap-2">
@@ -922,104 +1074,129 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div className="p-6 space-y-6 text-sm text-slate-800">
-              {/* Seksi 1A: Spreadsheet & GAS Direktorat Penuntutan */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center gap-2 font-bold text-emerald-950 text-xs uppercase tracking-wider">
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                  <span>1. Spreadsheet Direktorat PENUNTUTAN</span>
-                </div>
+              {/* Seksi 1A: Spreadsheet & GAS Direktorat Penuntutan (Khusus Admin Penuntutan) */}
+              {userDir === 'Penuntutan' && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-emerald-950 text-xs uppercase tracking-wider">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                    <span>Spreadsheet & Webhook Direktorat PENUNTUTAN</span>
+                  </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Link Google Spreadsheet Penuntutan:
+                    </label>
+                    <input
+                      type="url"
+                      value={tempSettings.spreadsheetUrl || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, spreadsheetUrl: e.target.value })}
+                      placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      URL Webhook Google Apps Script (GAS) Penuntutan:
+                    </label>
+                    <input
+                      type="url"
+                      value={tempSettings.googleAppsScriptUrl}
+                      onChange={(e) => setTempSettings({ ...tempSettings, googleAppsScriptUrl: e.target.value })}
+                      placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-700"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleTestGasWebhook(tempSettings.googleAppsScriptUrl, false)}
+                      disabled={testGasStatus.loading || !tempSettings.googleAppsScriptUrl}
+                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {testGasStatus.loading ? 'Menguji...' : 'Uji Webhook Penuntutan'}
+                    </button>
+                    {testGasStatus.result && (
+                      <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Normal
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Seksi 1B: Spreadsheet & GAS Direktorat Penindakan (Khusus Admin Penindakan) */}
+              {userDir === 'Penindakan' && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-purple-950 text-xs uppercase tracking-wider">
+                    <FileSpreadsheet className="w-4 h-4 text-purple-700" />
+                    <span>Spreadsheet & Webhook Direktorat PENINDAKAN</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Link Google Spreadsheet Penindakan:
+                    </label>
+                    <input
+                      type="url"
+                      value={tempSettings.spreadsheetUrlPenindakan || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, spreadsheetUrlPenindakan: e.target.value })}
+                      placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-purple-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      URL Webhook Google Apps Script (GAS) Penindakan:
+                    </label>
+                    <input
+                      type="url"
+                      value={tempSettings.googleAppsScriptUrlPenindakan || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, googleAppsScriptUrlPenindakan: e.target.value })}
+                      placeholder="https://script.google.com/macros/s/AKfycbx_penindakan.../exec"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-purple-700"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleTestGasWebhook(tempSettings.googleAppsScriptUrlPenindakan || '', true)}
+                      disabled={testGasPenindakanStatus.loading || !tempSettings.googleAppsScriptUrlPenindakan}
+                      className="px-3.5 py-1.5 bg-purple-900 hover:bg-purple-950 text-white rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {testGasPenindakanStatus.loading ? 'Menguji...' : 'Uji Webhook Penindakan'}
+                    </button>
+                    {testGasPenindakanStatus.result && (
+                      <span className="text-xs text-purple-700 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Normal
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Seksi Sinkronisasi Instan */}
+              <div className="p-4 bg-emerald-900 text-white rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-emerald-700 shadow-sm">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Link Google Spreadsheet Penuntutan:
-                  </label>
-                  <input
-                    type="url"
-                    value={tempSettings.spreadsheetUrl || ''}
-                    onChange={(e) => setTempSettings({ ...tempSettings, spreadsheetUrl: e.target.value })}
-                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-700"
-                  />
+                  <h4 className="font-bold text-xs text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-4 h-4" /> Sinkronisasi 3 Modul ke Spreadsheet
+                  </h4>
+                  <p className="text-xs text-emerald-100 mt-0.5">
+                    Kirim seluruh data lokal (Permohonan, Master Tahanan, dan Akun) ke Google Sheets Direktorat {userDir}.
+                  </p>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    URL Webhook Google Apps Script (GAS) Penuntutan:
-                  </label>
-                  <input
-                    type="url"
-                    value={tempSettings.googleAppsScriptUrl}
-                    onChange={(e) => setTempSettings({ ...tempSettings, googleAppsScriptUrl: e.target.value })}
-                    placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-700"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleTestGasWebhook(tempSettings.googleAppsScriptUrl, false)}
-                    disabled={testGasStatus.loading || !tempSettings.googleAppsScriptUrl}
-                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {testGasStatus.loading ? 'Menguji...' : 'Uji Webhook Penuntutan'}
-                  </button>
-                  {testGasStatus.result && (
-                    <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Normal
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Seksi 1B: Spreadsheet & GAS Direktorat Penindakan */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center gap-2 font-bold text-purple-950 text-xs uppercase tracking-wider">
-                  <FileSpreadsheet className="w-4 h-4 text-purple-700" />
-                  <span>2. Spreadsheet Terpisah Direktorat PENINDAKAN</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Link Google Spreadsheet Penindakan:
-                  </label>
-                  <input
-                    type="url"
-                    value={tempSettings.spreadsheetUrlPenindakan || ''}
-                    onChange={(e) => setTempSettings({ ...tempSettings, spreadsheetUrlPenindakan: e.target.value })}
-                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-purple-700"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    URL Webhook Google Apps Script (GAS) Penindakan:
-                  </label>
-                  <input
-                    type="url"
-                    value={tempSettings.googleAppsScriptUrlPenindakan || ''}
-                    onChange={(e) => setTempSettings({ ...tempSettings, googleAppsScriptUrlPenindakan: e.target.value })}
-                    placeholder="https://script.google.com/macros/s/AKfycbx_penindakan.../exec"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-purple-700"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleTestGasWebhook(tempSettings.googleAppsScriptUrlPenindakan || '', true)}
-                    disabled={testGasPenindakanStatus.loading || !tempSettings.googleAppsScriptUrlPenindakan}
-                    className="px-3.5 py-1.5 bg-purple-900 hover:bg-purple-950 text-white rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {testGasPenindakanStatus.loading ? 'Menguji...' : 'Uji Webhook Penindakan'}
-                  </button>
-                  {testGasPenindakanStatus.result && (
-                    <span className="text-xs text-purple-700 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Normal
-                    </span>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSyncAll}
+                  disabled={isSyncingAll}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-emerald-950 font-bold text-xs rounded-lg transition shrink-0 disabled:opacity-50 flex items-center gap-1.5 shadow"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
+                  {isSyncingAll ? 'Sedang Menyinkronkan...' : 'Sinkronkan Sekarang'}
+                </button>
               </div>
 
               {/* Seksi Salin Script Universal */}
@@ -1188,6 +1365,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Permohonan Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="bg-red-50 border-b border-red-100 p-5 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-slate-900 text-base">Hapus Permohonan T-10?</h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Apakah Anda yakin ingin menghapus permohonan kunjungan No. <strong className="text-slate-900">{deleteTarget.nomorSurat}</strong> atas nama pemohon <strong className="text-slate-900">{deleteTarget.namaPemohon}</strong> (Tahanan: {deleteTarget.namaTahanan})?
+                </p>
+                <p className="text-[11px] text-red-600 font-medium mt-1.5">
+                  *Tindakan ini akan menghapus data dari sistem dan menyinkronkan ke Spreadsheet.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={cancelDelete}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-100 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {isDeleting ? 'Menghapus...' : 'Ya, Hapus Permohonan'}
+              </button>
             </div>
           </div>
         </div>

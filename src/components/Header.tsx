@@ -35,7 +35,7 @@ export const Header: React.FC = () => {
 
   return (
     <header className="bg-[#0a2e1e] text-white sticky top-0 z-40 shadow-lg border-b border-emerald-900/40">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4" ref={navRef}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-4" ref={navRef}>
         {/* Brand */}
         <Link to="/" className="flex items-center gap-3 shrink-0 group transition-transform active:scale-95 duration-150">
           <img
@@ -103,18 +103,6 @@ export const Header: React.FC = () => {
                       <p className="text-[10px] text-slate-400 font-normal">Pengajuan izin kunjungan tahanan</p>
                     </div>
                   </Link>
-                  <Link
-                    to="/penuntutan/lacak"
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-emerald-800/80 transition-all duration-150 group hover:translate-x-1"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-950/80 flex items-center justify-center border border-emerald-600/40 text-amber-400 group-hover:bg-amber-400 group-hover:text-[#0a2e1e] transition-colors">
-                      <Search className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-100 group-hover:text-white">Lacak Permohonan</p>
-                      <p className="text-[10px] text-slate-400 font-normal">Cek status verifikasi & disposisi</p>
-                    </div>
-                  </Link>
                 </div>
               </div>
             )}
@@ -157,22 +145,23 @@ export const Header: React.FC = () => {
                       <p className="text-[10px] text-slate-400 font-normal">Pengajuan izin tahap penyidikan</p>
                     </div>
                   </Link>
-                  <Link
-                    to="/penindakan/lacak"
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-purple-900/60 transition-all duration-150 group hover:translate-x-1"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-purple-950 flex items-center justify-center border border-purple-600/40 text-purple-300 group-hover:bg-purple-400 group-hover:text-[#18112e] transition-colors">
-                      <Search className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-100 group-hover:text-white">Lacak Permohonan</p>
-                      <p className="text-[10px] text-slate-400 font-normal">Cek status izin penyidikan</p>
-                    </div>
-                  </Link>
                 </div>
               </div>
             )}
           </div>
+
+          {/* Single Unified Lacak Menu */}
+          <Link
+            to="/lacak"
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 active:scale-95 ${
+              location.pathname === '/lacak'
+                ? 'bg-amber-400 text-[#0a2e1e] shadow-md'
+                : 'text-slate-200 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Search className="w-4 h-4" />
+            Lacak Permohonan
+          </Link>
         </nav>
 
         {/* Mobile Menu Toggle */}
@@ -197,49 +186,32 @@ export const Header: React.FC = () => {
             Beranda
           </Link>
 
-          <div className="pt-2 border-t border-emerald-900/60">
-            <p className="text-[10px] uppercase font-extrabold text-amber-400 tracking-wider px-3 mb-1">
-              Direktorat Penuntutan
-            </p>
-            <Link
-              to="/penuntutan/formulir"
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-emerald-900/60 active:scale-95 transition-all"
-            >
-              <FileText className="w-4 h-4 text-amber-400" />
-              Formulir T-10 Penuntutan
-            </Link>
-            <Link
-              to="/penuntutan/lacak"
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-emerald-900/60 active:scale-95 transition-all"
-            >
-              <Search className="w-4 h-4 text-amber-400" />
-              Lacak Status Penuntutan
-            </Link>
-          </div>
+          <Link
+            to="/penuntutan/formulir"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-emerald-900/60 active:scale-95 transition-all"
+          >
+            <Scale className="w-4 h-4 text-amber-400" />
+            Formulir T-10 Penuntutan
+          </Link>
 
-          <div className="pt-2 border-t border-emerald-900/60">
-            <p className="text-[10px] uppercase font-extrabold text-purple-300 tracking-wider px-3 mb-1">
-              Direktorat Penindakan
-            </p>
-            <Link
-              to="/penindakan/formulir"
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-purple-950/60 active:scale-95 transition-all"
-            >
-              <FileText className="w-4 h-4 text-purple-300" />
-              Formulir T-10 Penindakan
-            </Link>
-            <Link
-              to="/penindakan/lacak"
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-purple-950/60 active:scale-95 transition-all"
-            >
-              <Search className="w-4 h-4 text-purple-300" />
-              Lacak Status Penindakan
-            </Link>
-          </div>
+          <Link
+            to="/penindakan/formulir"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-200 hover:bg-purple-950/60 active:scale-95 transition-all"
+          >
+            <ShieldAlert className="w-4 h-4 text-purple-300" />
+            Formulir T-10 Penindakan
+          </Link>
+
+          <Link
+            to="/lacak"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-300 bg-emerald-900/60 active:scale-95 transition-all"
+          >
+            <Search className="w-4 h-4 text-amber-400" />
+            Lacak Permohonan (Semua Direktorat)
+          </Link>
         </div>
       )}
     </header>

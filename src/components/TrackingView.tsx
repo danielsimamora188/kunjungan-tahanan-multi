@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Shield, Clock, CheckCircle2, XCircle, AlertCircle, FileText, User, Calendar, MapPin, ExternalLink, ArrowRight, Building2 } from 'lucide-react';
+import { Search, Shield, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, MapPin, ExternalLink, ArrowRight, Building2 } from 'lucide-react';
 import { PermohonanT10, StatusPermohonan, Direktorat } from '../types';
 import { formatIndonesianDate } from '../utils/validation';
 
 interface TrackingViewProps {
   initialQuery?: string;
   direktorat?: Direktorat;
-  onViewDoc: (permohonan: PermohonanT10) => void;
+  onViewDoc?: (permohonan: PermohonanT10) => void;
 }
 
 export const TrackingView: React.FC<TrackingViewProps> = ({ 
   initialQuery = '', 
   direktorat,
-  onViewDoc 
 }) => {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [isLoading, setIsLoading] = useState(false);
@@ -36,7 +35,8 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
     setHasSearched(true);
 
     try {
-      const url = direktorat 
+      // When no direktorat is specified, search across ALL directorates
+      const url = direktorat
         ? `/api/permohonan?q=${encodeURIComponent(clean)}&direktorat=${direktorat}`
         : `/api/permohonan?q=${encodeURIComponent(clean)}`;
       
@@ -101,17 +101,28 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
             <span className="inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-amber-400 border border-amber-500/30 rounded-lg bg-amber-500/10">
               Layanan Pelacakan Status
             </span>
-            {direktorat && (
+            {direktorat ? (
               <span className="inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300 border border-emerald-400/30 rounded-lg bg-emerald-500/20">
                 Direktorat {direktorat}
               </span>
+            ) : (
+              <>
+                <span className="inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300 border border-emerald-400/30 rounded-lg bg-emerald-500/20">
+                  Penuntutan
+                </span>
+                <span className="inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-purple-300 border border-purple-400/30 rounded-lg bg-purple-500/20">
+                  Penindakan
+                </span>
+              </>
             )}
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
             Lacak Surat Izin Kunjungan (T-10)
           </h2>
           <p className="text-slate-300 text-sm max-w-xl">
-            Masukkan Nomor Registrasi Surat T-10 atau 16 Digit NIK Pemohon untuk memeriksa status persetujuan berkas.
+            {direktorat
+              ? `Masukkan Nomor Registrasi Surat T-10 atau NIK Pemohon (Direktorat ${direktorat}).`
+              : 'Cari permohonan dari Direktorat Penuntutan maupun Penindakan sekaligus. Masukkan Nomor Registrasi atau NIK Pemohon.'}
           </p>
         </div>
       </div>
@@ -129,7 +140,13 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={direktorat === 'Penindakan' ? "Contoh: B-1/PM.3/PMpd.1/09/2026 atau 3201..." : "Contoh: B-1/PM.3/PMpt.1/09/2026 atau 3201..."}
+                placeholder={
+                  direktorat === 'Penindakan'
+                    ? 'Contoh: B-1/PM.3/PMpd.1/09/2026 atau NIK...'
+                    : direktorat === 'Penuntutan'
+                    ? 'Contoh: B-1/PM.3/PMpt.1/09/2026 atau NIK...'
+                    : 'Nomor Surat (PMpt.1/PMpd.1) atau NIK Pemohon...'
+                }
                 required
                 className="w-full pl-12 pr-28 py-3.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] transition font-mono"
               />
@@ -213,20 +230,18 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                   </div>
                 </div>
 
+                {item.catatanPetugas && item.catatanPetugas !== '-' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
+                    <span className="font-bold">Catatan Petugas: </span>
+                    <span>{item.catatanPetugas}</span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                   <div className="text-xs text-slate-500">
                     <span>Jadwal Kunjungan: </span>
                     <strong className="text-slate-900">{formatIndonesianDate(item.tanggalKunjungan)} ({item.sesiKunjungan})</strong>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onViewDoc(item)}
-                    className="px-4 py-2 bg-emerald-950 hover:bg-emerald-900 text-amber-400 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Lihat Dokumen T-10
-                  </button>
                 </div>
               </div>
             ))

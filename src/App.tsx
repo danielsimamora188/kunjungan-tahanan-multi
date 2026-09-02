@@ -14,10 +14,10 @@ import { AdminTahananPage } from './components/AdminTahananPage';
 import { AdminAkunPage } from './components/AdminAkunPage';
 import { AdminKunjunganPage } from './components/AdminKunjunganPage';
 import { PermohonanT10, SystemSettings, StatusPermohonan } from './types';
-import { DEFAULT_SETTINGS, INITIAL_SEED_PERMOHONAN } from './data/blueprintData';
+import { DEFAULT_SETTINGS } from './data/blueprintData';
 
 export default function App() {
-  const [permohonanList, setPermohonanList] = useState<PermohonanT10[]>(INITIAL_SEED_PERMOHONAN);
+  const [permohonanList, setPermohonanList] = useState<PermohonanT10[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [trackingQuery, setTrackingQuery] = useState<string>('');
   const [viewingDoc, setViewingDoc] = useState<PermohonanT10 | null>(null);
@@ -73,9 +73,17 @@ export default function App() {
     }
   ) => {
     try {
+      const loggedInUserRaw = localStorage.getItem('userAccount');
+      const currentUser = loggedInUserRaw ? JSON.parse(loggedInUserRaw) : null;
+
       const resp = await fetch(`/api/permohonan/${id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-direktorat': currentUser?.direktorat || 'Penuntutan',
+          'x-user-nip': currentUser?.nip || '',
+        },
         body: JSON.stringify({
           status: newStatus,
           catatanPetugas: catatan,
@@ -90,6 +98,9 @@ export default function App() {
       });
       if (resp.ok) {
         await fetchPermohonan();
+      } else {
+        const errJson = await resp.json();
+        alert(errJson.message || 'Gagal mengubah status permohonan.');
       }
     } catch (err) {
       console.error('Update status error:', err);
@@ -101,9 +112,17 @@ export default function App() {
 
   const handleSaveSettings = async (newSettings: SystemSettings) => {
     try {
+      const loggedInUserRaw = localStorage.getItem('userAccount');
+      const currentUser = loggedInUserRaw ? JSON.parse(loggedInUserRaw) : null;
+
       const resp = await fetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || 'Admin',
+          'x-user-direktorat': currentUser?.direktorat || 'Penuntutan',
+          'x-user-nip': currentUser?.nip || '',
+        },
         body: JSON.stringify(newSettings),
       });
       if (resp.ok) {
@@ -128,6 +147,10 @@ export default function App() {
   const handleViewDoc = (item: PermohonanT10) => {
     setViewingDoc(item);
   };
+
+  if (isAppLoading) {
+    return <LoadingScreen message="Menghubungkan & Memuat Portal Layanan T-10 JAMPIDMIL..." />;
+  }
 
   return (
     <BrowserRouter>
@@ -158,7 +181,6 @@ export default function App() {
           } />
           <Route path="lacak" element={
             <TrackingView
-              direktorat="Penuntutan"
               initialQuery={trackingQuery}
               onViewDoc={handleViewDoc}
             />
@@ -173,13 +195,8 @@ export default function App() {
               onTrack={handleTrackSubmission}
             />
           } />
-          <Route path="penuntutan/lacak" element={
-            <TrackingView
-              direktorat="Penuntutan"
-              initialQuery={trackingQuery}
-              onViewDoc={handleViewDoc}
-            />
-          } />
+          {/* Redirect lama /penuntutan/lacak ke /lacak */}
+          <Route path="penuntutan/lacak" element={<Navigate to="/lacak" replace />} />
 
           {/* Rute Khusus Direktorat Penindakan */}
           <Route path="penindakan/formulir" element={
@@ -190,13 +207,8 @@ export default function App() {
               onTrack={handleTrackSubmission}
             />
           } />
-          <Route path="penindakan/lacak" element={
-            <TrackingView
-              direktorat="Penindakan"
-              initialQuery={trackingQuery}
-              onViewDoc={handleViewDoc}
-            />
-          } />
+          {/* Redirect lama /penindakan/lacak ke /lacak */}
+          <Route path="penindakan/lacak" element={<Navigate to="/lacak" replace />} />
         </Route>
 
         {/* Auth Route */}

@@ -34,7 +34,7 @@ export const LandingPage: React.FC = () => {
           <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#0a2e1e] to-transparent" />
         </div>
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-28">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 lg:py-24">
           <div className="max-w-3xl">
             <span className="inline-block mb-4 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-amber-400 border border-amber-500/30 rounded-full bg-amber-500/10">
               Layanan Resmi JAMPIDMIL · Kejaksaan RI
@@ -72,7 +72,7 @@ export const LandingPage: React.FC = () => {
                   Ajukan Permohonan <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Link
-                  to="/penuntutan/lacak"
+                  to="/lacak"
                   className="inline-flex items-center justify-center px-4 py-2.5 text-xs sm:text-sm font-semibold text-white border border-white/20 hover:bg-white/10 rounded-xl transition"
                 >
                   Lacak
@@ -102,7 +102,7 @@ export const LandingPage: React.FC = () => {
                   Ajukan Permohonan <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Link
-                  to="/penindakan/lacak"
+                  to="/lacak"
                   className="inline-flex items-center justify-center px-4 py-2.5 text-xs sm:text-sm font-semibold text-white border border-white/20 hover:bg-white/10 rounded-xl transition"
                 >
                   Lacak
@@ -115,7 +115,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Info Cards Section */}
       <section className="bg-slate-100/80 border-y border-slate-200/80 py-6">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3.5">
               <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
@@ -141,7 +141,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Features */}
       <section className="bg-white py-16 sm:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">Keunggulan Layanan</h2>
             <p className="mt-3 text-slate-500 text-sm max-w-xl mx-auto">

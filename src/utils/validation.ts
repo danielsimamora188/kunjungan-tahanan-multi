@@ -218,3 +218,21 @@ export function compressBase64Image(
     img.src = dataUrl;
   });
 }
+
+/**
+ * Normalizes phone / WhatsApp numbers so leading zeros (08...) are never stripped
+ */
+export function normalizePhoneNumber(phone: any): string {
+  if (!phone || phone === '-' || phone === 'undefined' || phone === 'null') return '';
+  let str = String(phone).trim().replace(/^'/, '');
+  if (!str) return '';
+  // Convert 628... or +628... or 8... to 08...
+  if (str.startsWith('+62')) {
+    str = '0' + str.substring(3);
+  } else if (str.startsWith('62')) {
+    str = '0' + str.substring(2);
+  } else if (str.startsWith('8')) {
+    str = '0' + str;
+  }
+  return str;
+}

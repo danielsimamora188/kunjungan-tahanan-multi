@@ -18,10 +18,12 @@ import {
   MapPin,
   Briefcase,
   Building2,
-  Shield
+  Shield,
+  MessageSquare
 } from 'lucide-react';
 import { formatIndonesianDate, compressBase64Image } from '../utils/validation';
 import { HubunganTahanan, PermohonanT10, Tahanan, Direktorat } from '../types';
+import { LoadingScreen } from './LoadingScreen';
 import QRCode from 'qrcode';
 
 interface PublicFormProps {
@@ -59,6 +61,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
   const ktpInputRef = useRef<HTMLInputElement>(null);
 
   // Status State
+  const [isLoadingTahanan, setIsLoadingTahanan] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittedData, setSubmittedData] = useState<PermohonanT10 | null>(null);
@@ -66,10 +69,23 @@ export const PublicForm: React.FC<PublicFormProps> = ({
 
   // Fetch list tahanan from admin master data filtered by this direktorat
   useEffect(() => {
+    setIsLoadingTahanan(true);
+    setSelectedTahananId('');
     fetch(`/api/tahanan?direktorat=${direktorat}`)
       .then(r => r.json())
-      .then(json => { if (json.status === 'success') setTahananList(json.data); })
-      .catch(err => console.error('Gagal memuat daftar tahanan:', err));
+      .then(json => {
+        if (json.status === 'success' && Array.isArray(json.data)) {
+          const filtered = json.data.filter((t: Tahanan) => (t.direktorat || 'Penuntutan') === direktorat);
+          setTahananList(filtered);
+        } else {
+          setTahananList([]);
+        }
+      })
+      .catch(err => {
+        console.error('Gagal memuat daftar tahanan:', err);
+        setTahananList([]);
+      })
+      .finally(() => setIsLoadingTahanan(false));
   }, [direktorat]);
 
   const isFormValid = useMemo(() => {
@@ -191,6 +207,32 @@ export const PublicForm: React.FC<PublicFormProps> = ({
     setErrorMessage(null);
   };
 
+  const handleConfirmViaWa = async () => {
+    if (!submittedData) return;
+    const currentDir = submittedData.direktorat || direktorat;
+    try {
+      const resp = await fetch(`/api/admin-wa?direktorat=${currentDir}`);
+      const json = await resp.json();
+      let rawPhone = json.waNumber || (currentDir === 'Penindakan' ? '081299887766' : '081398765432');
+      let waPhone = rawPhone.replace(/\D/g, '');
+      if (waPhone.startsWith('0')) {
+        waPhone = '62' + waPhone.substring(1);
+      }
+      const message = `Yth. Admin Direktorat ${currentDir} JAMPIDMIL,\n\nSaya telah mengajukan Permohonan Kunjungan Tahanan (T-10):\n• No. Registrasi: ${submittedData.nomorSurat}\n• Nama Pemohon: ${submittedData.namaPemohon} (NIK: ${submittedData.nikPemohon})\n• Nama Tahanan: ${submittedData.namaTahanan}\n• Tgl Kunjungan: ${formatIndonesianDate(submittedData.tanggalKunjungan)} (${submittedData.sesiKunjungan})\n• Keperluan: ${submittedData.keperluanKunjungan}\n\nMohon diproses. Terima kasih.`;
+      
+      const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+      window.open(waUrl, '_blank');
+    } catch {
+      const waPhone = currentDir === 'Penindakan' ? '6281299887766' : '6281398765432';
+      const message = `Yth. Admin Direktorat ${currentDir} JAMPIDMIL,\n\nSaya telah mengajukan Permohonan Kunjungan Tahanan (T-10):\n• No. Registrasi: ${submittedData.nomorSurat}\n• Nama Pemohon: ${submittedData.namaPemohon}\n• Nama Tahanan: ${submittedData.namaTahanan}\n\nMohon diproses. Terima kasih.`;
+      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`, '_blank');
+    }
+  };
+
+  if (isLoadingTahanan) {
+    return <LoadingScreen message={`Memuat Data Tahanan Militer (Direktorat ${direktorat})...`} />;
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Banner */}
@@ -205,30 +247,27 @@ export const PublicForm: React.FC<PublicFormProps> = ({
               Direktorat {direktorat}
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-            Permohonan Surat Izin Kunjungan Tahanan
-          </h2>
           <p className="text-slate-300 text-sm max-w-xl">
             Layanan pengajuan izin kunjungan tahanan militer/koneksitas di bawah kewenangan <strong>Direktorat {direktorat} JAMPIDMIL</strong>.
           </p>
         </div>
       </div>
 
-      {/* Success Modal / Card State */}
+      {/* SUCCESS BANNER */}
       {submittedData ? (
-        <div className="bg-white rounded-2xl shadow-2xl border border-emerald-200 p-6 sm:p-8 animate-in fade-in zoom-in-95 duration-300">
-          <div className="flex flex-col items-center text-center pb-6 border-b border-slate-100">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4 ring-8 ring-emerald-50">
-              <CheckCircle2 className="w-10 h-10" />
+        <div className="bg-white rounded-2xl shadow-xl border border-emerald-100 p-6 sm:p-8 animate-in fade-in zoom-in-95 duration-200">
+          <div className="text-center border-b border-slate-100 pb-6">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-800 rounded-full flex items-center justify-center mx-auto mb-3 border border-emerald-300">
+              <CheckCircle2 className="w-9 h-9" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-emerald-800 bg-emerald-100/80 px-3 py-1 rounded-full mb-2">
-              Pendaftaran Berhasil Diterbitkan · Direktorat {direktorat}
-            </span>
-            <h3 className="text-2xl font-bold text-slate-900">
-              Nomor Registrasi Kunjungan
-            </h3>
-            <div className="mt-3 px-6 py-2.5 bg-emerald-950 text-amber-400 rounded-xl font-mono text-xl sm:text-2xl font-bold tracking-wider shadow-inner border border-amber-500/40">
-              {submittedData.nomorSurat}
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">
+              Permohonan Kunjungan Berhasil Terkirim!
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
+              Surat permohonan kunjungan tahanan (T-10) Anda sedang diproses oleh petugas Direktorat {submittedData.direktorat || direktorat}.
+            </p>
+            <div className="mt-3 inline-block bg-slate-900 text-amber-300 px-4 py-1.5 rounded-xl font-mono text-xs font-bold border border-slate-800">
+              No. Registrasi: {submittedData.nomorSurat}
             </div>
           </div>
 
@@ -283,7 +322,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
           </div>
 
           <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 text-xs text-amber-900 mb-6 leading-relaxed">
-            <strong>Catatan:</strong> Simpan Nomor Registrasi atau Screenshot QR Code di atas. Notifikasi WhatsApp otomatis telah dikirimkan ke nomor terdaftar. Anda dapat memeriksa persetujuan surat resmi T-10 pada menu Lacak Status.
+            <strong>Catatan:</strong> Simpan Nomor Registrasi atau Screenshot QR Code di atas. Tekan tombol hijau di bawah untuk mengonfirmasi permohonan secara langsung ke WhatsApp Admin Direktorat {submittedData.direktorat || direktorat}.
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
@@ -294,19 +333,19 @@ export const PublicForm: React.FC<PublicFormProps> = ({
             >
               Buat Permohonan Baru
             </button>
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               <button
                 type="button"
-                onClick={() => onViewDoc(submittedData)}
-                className="flex-1 sm:flex-initial px-5 py-2.5 text-sm font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-xl transition flex items-center justify-center gap-2"
+                onClick={handleConfirmViaWa}
+                className="w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition flex items-center justify-center gap-2 shadow-md"
               >
-                <FileText className="w-4 h-4" />
-                Lihat Lembar T-10
+                <MessageSquare className="w-4 h-4" />
+                Konfirmasi via WhatsApp
               </button>
               <button
                 type="button"
                 onClick={() => onTrack(submittedData.nomorSurat)}
-                className="flex-1 sm:flex-initial px-5 py-2.5 text-sm font-bold text-white bg-[#0a2e1e] hover:bg-[#0d3d28] rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-white bg-[#0a2e1e] hover:bg-[#0d3d28] rounded-xl shadow-md transition flex items-center justify-center gap-2"
               >
                 Lacak Status
               </button>
@@ -346,7 +385,11 @@ export const PublicForm: React.FC<PublicFormProps> = ({
                     required
                     className="w-full appearance-none px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] focus:border-transparent transition"
                   >
-                    <option value="">-- Pilih Nama Tahanan Terdaftar ({tahananList.length} Tahanan) --</option>
+                    <option value="">
+                      {tahananList.length > 0
+                        ? `-- Pilih Tahanan Direktorat ${direktorat} (${tahananList.length} Tahanan Tersedia) --`
+                        : `-- Belum ada data tahanan terdaftar untuk Direktorat ${direktorat} --`}
+                    </option>
                     {tahananList.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.namaLengkap || t.namaTahanan} — {t.pangkatNrpTahanan} ({t.satuanTahanan})

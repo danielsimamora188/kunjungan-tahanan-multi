@@ -1,23 +1,59 @@
+import dotenv from "dotenv";
+dotenv.config();
 import express, { Request, Response } from "express";
 import path from "path";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
-import { INITIAL_SEED_PERMOHONAN, INITIAL_SEED_AKUN, INITIAL_SEED_TAHANAN, DEFAULT_SETTINGS } from "./src/data/blueprintData";
+import { DEFAULT_SETTINGS } from "./src/data/blueprintData";
 import { PermohonanT10, SystemSettings, CreatePermohonanInput, Tahanan, AkunUser, Direktorat } from "./src/types";
+
+const HASH_SALT = "JAMPIDMIL_T10_SECURE_AUTH_V1";
+
+export function hashPassword(plainText: string): string {
+  if (!plainText) return "";
+  if (plainText.startsWith("$sha256$")) return plainText;
+  const hash = crypto.createHmac("sha256", HASH_SALT).update(plainText).digest("hex");
+  return `$sha256$${hash}`;
+}
+
+export function verifyPassword(inputPass: string, storedHashOrPlain: string): boolean {
+  if (!inputPass || !storedHashOrPlain) return false;
+  if (storedHashOrPlain.startsWith("$sha256$")) {
+    return hashPassword(inputPass) === storedHashOrPlain;
+  }
+  return inputPass === storedHashOrPlain;
+}
+
+export function normalizePhoneNumber(phone: any): string {
+  if (!phone || phone === '-' || phone === 'undefined' || phone === 'null') return '';
+  let str = String(phone).trim().replace(/^'/, '');
+  if (!str) return '';
+  if (str.startsWith('+62')) {
+    str = '0' + str.substring(3);
+  } else if (str.startsWith('62')) {
+    str = '0' + str.substring(2);
+  } else if (str.startsWith('8')) {
+    str = '0' + str;
+  }
+  return str;
+}
 
 export const app = express();
 
 // In-Memory persistent store for server session
-let permohonanList: PermohonanT10[] = [...INITIAL_SEED_PERMOHONAN];
-const defaultGasUrl = process.env.GAS_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbyU4X1mYGhuQ_3CliJD8WT4U5mp4vwNOnNUg-0b4uWF2jHVBxXiZ-X7GdnBq3IJPN1XiQ/exec";
+let permohonanList: PermohonanT10[] = [];
+const defaultGasUrl = process.env.GAS_WEBHOOK_URL || DEFAULT_SETTINGS.googleAppsScriptUrl;
+const defaultGasUrlPenindakan = process.env.GAS_WEBHOOK_URL_PENINDAKAN || (DEFAULT_SETTINGS.googleAppsScriptUrlPenindakan || "");
 let systemSettings: SystemSettings = {
   ...DEFAULT_SETTINGS,
   googleAppsScriptUrl: defaultGasUrl,
+  googleAppsScriptUrlPenindakan: defaultGasUrlPenindakan,
   spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1_98HePK55aFpwm9eNpeMBjQZU8nH1wg0bN7m7U-tiV4/edit?usp=sharing",
   googleDocTemplateUrl: "https://docs.google.com/document/d/1EvD3bMe-K_6-RliZa6kdbed6Ef_IRdlb/edit?usp=sharing&ouid=109982999574552257586&rtpof=true&sd=true",
 };
 
-let tahananList: Tahanan[] = [...INITIAL_SEED_TAHANAN];
-let akunList: AkunUser[] = [...INITIAL_SEED_AKUN];
+let tahananList: Tahanan[] = [];
+let akunList: AkunUser[] = [];
 
 /**
  * Dynamic / Gap-filling Number Generator for T-10
@@ -75,7 +111,7 @@ async function syncAllToGAS(action: string, payload: any, direktorat?: Direktora
 
 let lastFetchTime = 0;
 let gasFetchPromise: Promise<void> | null = null;
-const CACHE_TTL_MS = 15000;
+const CACHE_TTL_MS = 3000;
 
 async function fetchAllFromGAS(forceRefresh = false) {
   if (!systemSettings.googleAppsScriptUrl && !systemSettings.googleAppsScriptUrlPenindakan) return;
@@ -100,6 +136,10 @@ async function fetchAllFromGAS(forceRefresh = false) {
         urls.push({ url: systemSettings.googleAppsScriptUrlPenindakan, dir: 'Penindakan' });
       }
 
+      const newPermohonanList: PermohonanT10[] = [];
+      const newTahananList: Tahanan[] = [];
+      const newAkunList: AkunUser[] = [];
+
       for (const { url, dir } of urls) {
         try {
           const resp = await fetch(url, {
@@ -112,25 +152,34 @@ async function fetchAllFromGAS(forceRefresh = false) {
           lastFetchTime = Date.now();
           if (json.status === "success") {
             if (Array.isArray(json.permohonan)) {
-              const mappedPermohonan: PermohonanT10[] = json.permohonan.map((p: any) => ({
-                ...p,
-                direktorat: p.direktorat || (String(p.nomorSurat || "").includes("PMpd") ? 'Penindakan' : dir)
-              }));
-              
-              // Merge or replace based on direktorat
-              const otherPermohonan = permohonanList.filter(p => p.direktorat !== dir);
-              permohonanList = [...otherPermohonan, ...mappedPermohonan];
+              json.permohonan.forEach((p: any, idx: number) => {
+                const uniqueId = p.id ? `${dir === 'Penindakan' ? 'pnd' : 'pnt'}-${p.id}` : `p-${dir === 'Penindakan' ? 'pnd' : 'pnt'}-${idx}-${Date.now()}`;
+                newPermohonanList.push({
+                  ...p,
+                  id: uniqueId,
+                  noWhatsApp: normalizePhoneNumber(p.noWhatsApp),
+                  direktorat: dir, // 100% strict by Webhook URL source
+                  status: p.status || 'Diproses',
+                  penandatanganNama: (p.penandatanganNama && p.penandatanganNama !== '-') ? p.penandatanganNama : '',
+                  penandatanganPangkat: (p.penandatanganPangkat && p.penandatanganPangkat !== '-') ? p.penandatanganPangkat : '',
+                  penandatanganNip: (p.penandatanganNip && p.penandatanganNip !== '-') ? p.penandatanganNip : '',
+                  penandatanganTipeIdentitas: (p.penandatanganTipeIdentitas && p.penandatanganTipeIdentitas !== '-') ? p.penandatanganTipeIdentitas : 'NIP',
+                  penandatanganJabatan: (p.penandatanganJabatan && p.penandatanganJabatan !== '-') ? p.penandatanganJabatan : '',
+                  penandatanganTtdUrl: (p.penandatanganTtdUrl && p.penandatanganTtdUrl !== '-') ? p.penandatanganTtdUrl : '',
+                });
+              });
             }
             if (Array.isArray(json.tahanan)) {
-              const mappedTahanan: Tahanan[] = json.tahanan.map((t: any) => {
-                const existing = tahananList.find(item => item.id === t.id || item.namaLengkap === t.namaLengkap);
-                return {
-                  id: t.id || `t-${Date.now()}`,
+              json.tahanan.forEach((t: any, idx: number) => {
+                const uniqueId = t.id ? `${dir === 'Penindakan' ? 'tnd' : 'tnt'}-${t.id}` : `t-${dir === 'Penindakan' ? 'tnd' : 'tnt'}-${idx}-${Date.now()}`;
+                newTahananList.push({
+                  id: uniqueId,
                   namaLengkap: t.namaLengkap || t.namaTahanan || '',
                   namaTahanan: t.namaTahanan || t.namaLengkap || '',
-                  direktorat: t.direktorat || dir,
-                  pangkatNrpTahanan: (t.pangkatNrpTahanan && t.pangkatNrpTahanan !== '-') ? t.pangkatNrpTahanan : (existing?.pangkatNrpTahanan && existing.pangkatNrpTahanan !== '-') ? existing.pangkatNrpTahanan : (t.pangkat || '-'),
-                  satuanTahanan: (t.satuanTahanan && t.satuanTahanan !== '-') ? t.satuanTahanan : (existing?.satuanTahanan && existing.satuanTahanan !== '-') ? existing.satuanTahanan : (t.satuan || '-'),
+                  // STRICT: Always bound to the Webhook URL's direktorat
+                  direktorat: dir,
+                  pangkatNrpTahanan: (t.pangkatNrpTahanan && t.pangkatNrpTahanan !== '-') ? t.pangkatNrpTahanan : (t.pangkat || '-'),
+                  satuanTahanan: (t.satuanTahanan && t.satuanTahanan !== '-') ? t.satuanTahanan : (t.satuan || '-'),
                   tempatLahir: t.tempatLahir || '',
                   tanggalLahir: t.tanggalLahir || '',
                   jenisKelamin: t.jenisKelamin || 'Laki-laki',
@@ -142,18 +191,16 @@ async function fetchAllFromGAS(forceRefresh = false) {
                   nik: t.nik || '',
                   tempatDitahan: t.tempatDitahan || t.lokasiRutan || '',
                   lokasiRutan: t.lokasiRutan || t.tempatDitahan || ''
-                };
+                });
               });
-              const otherTahanan = tahananList.filter(t => t.direktorat !== dir);
-              tahananList = [...otherTahanan, ...mappedTahanan];
             }
             if (Array.isArray(json.akun) && json.akun.length > 0) {
-              const mappedAkun: AkunUser[] = json.akun.map((a: any) => {
+              json.akun.forEach((a: any, idx: number) => {
+                const uniqueId = a.id ? `${dir === 'Penindakan' ? 'und' : 'unt'}-${a.id}` : `u-${dir === 'Penindakan' ? 'und' : 'unt'}-${idx}-${Date.now()}`;
                 let tipeId: 'NIP' | 'NRP' = (a.tipeIdentitas === 'NRP' || a.tipeIdentitas === 'NIP') ? a.tipeIdentitas : 'NIP';
                 let pangkat = a.pangkat;
                 let jabatan = a.jabatan;
                 let role = a.role;
-                const d: Direktorat = a.direktorat || (String(role).toLowerCase().includes("penyidik") ? 'Penindakan' : dir);
 
                 if (a.tipeIdentitas && a.tipeIdentitas !== 'NIP' && a.tipeIdentitas !== 'NRP') {
                   pangkat = a.tipeIdentitas;
@@ -173,31 +220,39 @@ async function fetchAllFromGAS(forceRefresh = false) {
                   }
                 }
 
-                return {
-                  id: a.id || `a-${Date.now()}`,
-                  nama: a.nama || 'Pengguna',
-                  nip: a.nip || '',
+                let passwordHash = a.password || '';
+                if (passwordHash && !passwordHash.startsWith('$sha256$')) {
+                  passwordHash = hashPassword(passwordHash);
+                }
+
+                newAkunList.push({
+                  id: uniqueId,
+                  nama: (a.nama && a.nama !== '-') ? a.nama : 'Pengguna',
+                  nip: (a.nip && a.nip !== '-') ? a.nip : '',
                   tipeIdentitas: tipeId,
-                  pangkat: pangkat || '',
-                  jabatan: jabatan || '',
+                  pangkat: (pangkat && pangkat !== '-') ? pangkat : '',
+                  jabatan: (jabatan && jabatan !== '-') ? jabatan : '',
                   role: role,
-                  direktorat: d,
+                  // STRICT: All accounts from this webhook URL are exclusively bound to this direktorat
+                  direktorat: dir,
                   username: a.username || '',
-                  password: a.password || '',
-                  email: a.email || '',
-                  noHp: a.noHp || '',
+                  password: passwordHash,
+                  email: (a.email && a.email !== '-') ? a.email : '',
+                  noHp: normalizePhoneNumber(a.noHp),
                   eSignEnabled: !!a.eSignEnabled,
-                  fotoTandaTangan: a.fotoTandaTangan || ''
-                };
+                  fotoTandaTangan: (a.fotoTandaTangan && a.fotoTandaTangan !== '-') ? a.fotoTandaTangan : ''
+                });
               });
-              const otherAkun = akunList.filter(a => a.direktorat !== dir);
-              akunList = [...otherAkun, ...mappedAkun];
             }
           }
         } catch (e) {
           console.warn(`Fetch error for ${dir}:`, e);
         }
       }
+
+      permohonanList = newPermohonanList;
+      tahananList = newTahananList;
+      akunList = newAkunList;
     } catch (err) {
       console.warn("GAS fetch error (non-fatal):", err);
     } finally {
@@ -294,20 +349,36 @@ async function startServer() {
     });
 
     if (matchedAccount) {
-      const expectedPass = String(matchedAccount.password || "").trim();
-      if (expectedPass && expectedPass !== cleanPass) {
+      const storedPass = String(matchedAccount.password || "").trim();
+      if (storedPass && !verifyPassword(cleanPass, storedPass)) {
         return res.status(401).json({ status: "error", message: "Password yang Anda masukkan salah." });
       }
 
+      // Upgrade legacy password to hash if needed
+      if (storedPass && !storedPass.startsWith("$sha256$")) {
+        matchedAccount.password = hashPassword(storedPass);
+      }
+
+      const safeUser = { ...matchedAccount };
+      delete (safeUser as any).password;
+
       return res.json({
         status: "success",
-        token: `mock-token-${matchedAccount.id}-${Date.now()}`,
-        user: matchedAccount,
+        token: `token-${matchedAccount.id}-${Date.now()}`,
+        user: safeUser,
       });
     }
 
     return res.status(401).json({ status: "error", message: "Username, NIP, atau password salah." });
   });
+
+  // Helper to extract authenticated user context from request headers or queries
+  function getUserContext(req: Request): { role?: string; direktorat?: Direktorat; nip?: string } {
+    const role = (req.headers["x-user-role"] as string) || (req.query.userRole as string) || "";
+    const direktorat = (req.headers["x-user-direktorat"] as Direktorat) || (req.query.userDirektorat as Direktorat) || undefined;
+    const nip = (req.headers["x-user-nip"] as string) || (req.query.userNip as string) || "";
+    return { role, direktorat, nip };
+  }
 
   // 1. Health Check
   app.get("/api/health", (_req: Request, res: Response) => {
@@ -324,14 +395,15 @@ async function startServer() {
   // 2. Get All / Filter Permohonan
   app.get("/api/permohonan", async (req: Request, res: Response) => {
     await fetchAllFromGAS();
+    const userContext = getUserContext(req);
     const q = (req.query.q as string || "").toLowerCase();
     const status = req.query.status as string;
-    const direktorat = req.query.direktorat as string;
+    const targetDir = (req.query.direktorat as string) || userContext.direktorat;
 
     let filtered = [...permohonanList];
 
-    if (direktorat && direktorat !== "Semua") {
-      filtered = filtered.filter((item) => item.direktorat === direktorat);
+    if (targetDir && targetDir !== "Semua") {
+      filtered = filtered.filter((item) => (item.direktorat || 'Penuntutan') === targetDir);
     }
 
     if (status && status !== "Semua") {
@@ -357,6 +429,40 @@ async function startServer() {
       total: filtered.length,
       data: filtered,
     });
+  });
+
+  // 2.5 Get Admin WA Number Endpoint
+  app.get("/api/admin-wa", async (req: Request, res: Response) => {
+    await fetchAllFromGAS();
+    const dir = (req.query.direktorat as Direktorat) || 'Penuntutan';
+    
+    // 1. Strict priority: Role Admin with valid noHp
+    let adminAcc = akunList.find(a => 
+      (a.direktorat || 'Penuntutan') === dir && 
+      a.role === 'Admin' && 
+      a.noHp && a.noHp.trim().length >= 9
+    );
+
+    // 2. Fallback: Role Staff with valid noHp
+    if (!adminAcc) {
+      adminAcc = akunList.find(a => 
+        (a.direktorat || 'Penuntutan') === dir && 
+        a.role === 'Staff' && 
+        a.noHp && a.noHp.trim().length >= 9
+      );
+    }
+
+    // 3. Fallback: Any account in directorate with valid noHp
+    if (!adminAcc) {
+      adminAcc = akunList.find(a => 
+        (a.direktorat || 'Penuntutan') === dir && 
+        a.noHp && a.noHp.trim().length >= 9
+      );
+    }
+
+    let phone = adminAcc?.noHp || (dir === 'Penindakan' ? '081299887766' : '081398765432');
+    phone = normalizePhoneNumber(phone);
+    res.json({ status: "success", direktorat: dir, waNumber: phone, adminNama: adminAcc?.nama || 'Admin' });
   });
 
   // 3. Get Single Permohonan by ID, Nomor Surat, or NIK
@@ -446,15 +552,12 @@ async function startServer() {
         `🏛 *JAMPIDMIL - KEJAKSAAN AGUNG RI*\n` +
         `━━━━━━━━━━━━━━━━━━━━━━\n` +
         `📄 *No. Surat T-10:* ${nomorSurat}\n` +
-        `👤 *Pemohon:* ${newPermohonan.namaPemohon}\n` +
-        `🆔 *NIK:* ${newPermohonan.nikPemohon}\n` +
-        `📱 *WhatsApp:* ${newPermohonan.noWhatsApp}\n` +
-        `🔗 *Hubungan:* ${newPermohonan.hubungan}\n\n` +
-        `⚔️ *Tahanan Militer:* ${newPermohonan.namaTahanan} (${newPermohonan.satuanTahanan})\n` +
+        `👤 *Pemohon:* ${newPermohonan.namaPemohon} (${newPermohonan.hubungan})\n` +
+        `🎖 *Tahanan:* ${newPermohonan.namaTahanan} (${newPermohonan.pangkatNrpTahanan})\n` +
         `📍 *Lokasi:* ${newPermohonan.lokasiRutan}\n` +
-        `📅 *Tanggal:* ${newPermohonan.tanggalKunjungan} (${newPermohonan.sesiKunjungan})\n\n` +
-        `📌 *Status:* 🟡 *DIPROSES*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━`;
+        `📅 *Tgl Kunjungan:* ${newPermohonan.tanggalKunjungan} (${newPermohonan.sesiKunjungan})\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `_Mohon Administrator / Pejabat Penelaah ${targetDirektorat} segera memeriksa permohonan ini._`;
 
       const waAdminResult = await dispatchWhatsAppNotification(
         systemSettings.waGatewayProvider,
@@ -480,9 +583,10 @@ async function startServer() {
     }
   });
 
-  // 5. Update Status Permohonan (Admin)
+  // 5. Update Status Permohonan & Disposisi / E-Sign (RBAC & Directorate Protected)
   app.patch("/api/permohonan/:id/status", async (req: Request, res: Response) => {
     const { id } = req.params;
+    const userContext = getUserContext(req);
     const {
       status,
       catatanPetugas,
@@ -495,12 +599,43 @@ async function startServer() {
       penandatanganTtdUrl
     } = req.body;
 
-    const itemIndex = permohonanList.findIndex((item) => item.id === id || item.nomorSurat === id);
+    let itemIndex = permohonanList.findIndex(
+      (item) =>
+        (item.id === id || item.nomorSurat === id) &&
+        (!userContext.direktorat || userContext.direktorat === 'Semua' || item.direktorat === userContext.direktorat)
+    );
+    if (itemIndex === -1) {
+      itemIndex = permohonanList.findIndex((item) => item.id === id || item.nomorSurat === id);
+    }
     if (itemIndex === -1) {
       return res.status(404).json({ status: "error", message: "Data tidak ditemukan." });
     }
 
     const item = permohonanList[itemIndex];
+
+    // Directorate Boundary Enforcement
+    if (userContext.direktorat && userContext.direktorat !== item.direktorat) {
+      return res.status(403).json({
+        status: "error",
+        message: `Akses Ditolak: Anda (${userContext.role} ${userContext.direktorat}) tidak memiliki wewenang untuk memproses permohonan Direktorat ${item.direktorat}.`,
+      });
+    }
+
+    // Role Specific Boundary Enforcement
+    if (userContext.role === "Penuntut Umum Koneksitas" && item.direktorat !== "Penuntutan") {
+      return res.status(403).json({
+        status: "error",
+        message: "Akses Ditolak: Penuntut Umum Koneksitas hanya berwenang memeriksa dan menandatangani permohonan Direktorat Penuntutan.",
+      });
+    }
+
+    if (userContext.role === "Penyidik Koneksitas" && item.direktorat !== "Penindakan") {
+      return res.status(403).json({
+        status: "error",
+        message: "Akses Ditolak: Penyidik Koneksitas hanya berwenang memeriksa dan menandatangani permohonan Direktorat Penindakan.",
+      });
+    }
+
     item.status = status || item.status;
     if (catatanPetugas !== undefined) item.catatanPetugas = catatanPetugas;
     if (namaPetugasPemeriksa !== undefined) item.namaPetugasPemeriksa = namaPetugasPemeriksa;
@@ -555,6 +690,8 @@ async function startServer() {
 
     const dirPermohonan = permohonanList.filter(p => p.direktorat === item.direktorat);
     syncAllToGAS("sync_permohonan", { list: dirPermohonan }, item.direktorat);
+    // Reset cache so next GET re-fetches from GAS (which now has the updated status)
+    lastFetchTime = 0;
 
     return res.json({
       status: "success",
@@ -563,13 +700,32 @@ async function startServer() {
     });
   });
 
-  // 5b. Delete Permohonan (Admin & Staff)
+  // 5b. Delete Permohonan (Admin Only per Directorate)
   app.delete("/api/permohonan/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
-    const deletedItem = permohonanList.find((item) => item.id === id || item.nomorSurat === id);
-
-    if (!deletedItem) {
+    const userContext = getUserContext(req);
+    let itemIndex = permohonanList.findIndex(
+      (item) =>
+        (item.id === id || item.nomorSurat === id) &&
+        (!userContext.direktorat || userContext.direktorat === 'Semua' || item.direktorat === userContext.direktorat)
+    );
+    if (itemIndex === -1) {
+      itemIndex = permohonanList.findIndex((item) => item.id === id || item.nomorSurat === id);
+    }
+    if (itemIndex === -1) {
       return res.status(404).json({ status: "error", message: "Data tidak ditemukan." });
+    }
+    const deletedItem = permohonanList[itemIndex];
+
+    if (userContext.role && userContext.role !== "Admin") {
+      return res.status(403).json({ status: "error", message: "Akses Ditolak: Hanya Administrator yang berwenang menghapus permohonan." });
+    }
+
+    if (userContext.direktorat && userContext.direktorat !== deletedItem.direktorat) {
+      return res.status(403).json({
+        status: "error",
+        message: `Akses Ditolak: Anda tidak memiliki wewenang untuk menghapus data Direktorat ${deletedItem.direktorat}.`,
+      });
     }
 
     permohonanList = permohonanList.filter((item) => item.id !== id && item.nomorSurat !== id);
@@ -582,7 +738,7 @@ async function startServer() {
     });
   });
 
-  // 6. Settings Get & Update
+  // 6. Settings Get & Update (Admin Only per Directorate)
   app.get("/api/settings", (_req: Request, res: Response) => {
     res.json({
       status: "success",
@@ -591,6 +747,11 @@ async function startServer() {
   });
 
   app.post("/api/settings", (req: Request, res: Response) => {
+    const userContext = getUserContext(req);
+    if (userContext.role && userContext.role !== "Admin") {
+      return res.status(403).json({ status: "error", message: "Akses Ditolak: Hanya Administrator yang berwenang mengubah pengaturan sistem." });
+    }
+
     systemSettings = { ...systemSettings, ...req.body };
     res.json({
       status: "success",
@@ -599,12 +760,63 @@ async function startServer() {
     });
   });
 
+  // Test Webhook GAS
+  app.post("/api/test-gas", async (req: Request, res: Response) => {
+    try {
+      const { url } = req.body;
+      if (!url) {
+        return res.status(400).json({ status: "error", message: "URL Webhook wajib diisi." });
+      }
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_all" }),
+      });
+      const data = await resp.json();
+      return res.json({
+        status: "success",
+        message: "Koneksi Webhook Google Apps Script berhasil terhubung!",
+        data,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        status: "error",
+        message: `Gagal menghubungi Google Apps Script: ${err.message || String(err)}`,
+      });
+    }
+  });
+
+  // Test WhatsApp Gateway
+  app.post("/api/test-wa", async (req: Request, res: Response) => {
+    try {
+      const { provider, apiKey, targetPhone } = req.body;
+      const testMsg = "Tes koneksi WhatsApp Gateway JAMPIDMIL Berhasil.";
+      const result = await dispatchWhatsAppNotification(provider, apiKey, targetPhone, testMsg);
+      if (result.success) {
+        return res.json({ status: "success", message: result.detail || "WhatsApp terkirim." });
+      } else {
+        return res.status(500).json({ status: "error", message: result.detail || "Gagal kirim pesan." });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ status: "error", message: err.message || "Gagal tes WhatsApp." });
+    }
+  });
+
   // Force sync website baseline data to Google Spreadsheet
   app.post("/api/sync-all", async (req: Request, res: Response) => {
     try {
-      const { direktorat } = req.body;
-      const targetDir: Direktorat = direktorat === 'Penindakan' ? 'Penindakan' : 'Penuntutan';
+      const userContext = getUserContext(req);
+      const targetDir: Direktorat = (userContext.direktorat) 
+        ? userContext.direktorat 
+        : (req.body.direktorat === 'Penindakan' ? 'Penindakan' : 'Penuntutan');
       
+      if (userContext.direktorat && req.body.direktorat && userContext.direktorat !== req.body.direktorat) {
+        return res.status(403).json({
+          status: "error",
+          message: `Akses Ditolak: Anda hanya berwenang menyinkronkan data Direktorat ${userContext.direktorat}.`,
+        });
+      }
+
       const filteredAkun = akunList.filter(a => a.direktorat === targetDir);
       const filteredTahanan = tahananList.filter(t => t.direktorat === targetDir);
       const filteredPermohonan = permohonanList.filter(p => p.direktorat === targetDir);
@@ -631,15 +843,16 @@ async function startServer() {
   });
 
   // ==========================================
-  // MASTER DATA TAHANAN ROUTES
+  // MASTER DATA TAHANAN ROUTES (RBAC & BOUNDARY PROTECTED)
   // ==========================================
 
   app.get("/api/tahanan", async (req: Request, res: Response) => {
     await fetchAllFromGAS();
-    const direktorat = req.query.direktorat as string;
+    const userContext = getUserContext(req);
+    const targetDir = (req.query.direktorat as string) || userContext.direktorat;
     let result = [...tahananList];
-    if (direktorat && direktorat !== 'Semua') {
-      result = result.filter(t => t.direktorat === direktorat);
+    if (targetDir && targetDir !== 'Semua') {
+      result = result.filter(t => (t.direktorat || 'Penuntutan') === targetDir);
     }
     res.json({
       status: "success",
@@ -647,10 +860,21 @@ async function startServer() {
     });
   });
 
-  app.post("/api/tahanan", (req: Request, res: Response) => {
-    const dir: Direktorat = req.body.direktorat === 'Penindakan' ? 'Penindakan' : 'Penuntutan';
+  app.post("/api/tahanan", async (req: Request, res: Response) => {
+    const userContext = getUserContext(req);
+    if (userContext.role === "Penuntut Umum Koneksitas" || userContext.role === "Penyidik Koneksitas") {
+      return res.status(403).json({
+        status: "error",
+        message: "Akses Ditolak: Pejabat Penandatangan memiliki akses Read-Only untuk Master Tahanan.",
+      });
+    }
+
+    const dir: Direktorat = (req.body.direktorat === 'Penindakan') 
+      ? 'Penindakan' 
+      : ((req.body.direktorat === 'Penuntutan') ? 'Penuntutan' : (userContext.direktorat || 'Penuntutan'));
+
     const newTahanan: Tahanan = {
-      id: `t-${Date.now()}`,
+      id: req.body.id || `t-${Date.now()}`,
       namaLengkap: req.body.namaLengkap || req.body.namaTahanan || '',
       direktorat: dir,
       tempatLahir: req.body.tempatLahir || '',
@@ -664,82 +888,213 @@ async function startServer() {
       nik: req.body.nik || '',
       tempatDitahan: req.body.tempatDitahan || req.body.lokasiRutan || '',
       namaTahanan: req.body.namaTahanan || req.body.namaLengkap,
-      pangkatNrpTahanan: req.body.pangkatNrpTahanan,
-      satuanTahanan: req.body.satuanTahanan,
-      lokasiRutan: req.body.lokasiRutan || req.body.tempatDitahan,
+      pangkatNrpTahanan: req.body.pangkatNrpTahanan || '-',
+      satuanTahanan: req.body.satuanTahanan || '-',
+      lokasiRutan: req.body.lokasiRutan || req.body.tempatDitahan || '',
     };
     tahananList.push(newTahanan);
     const dirTahanan = tahananList.filter(t => t.direktorat === dir);
-    syncAllToGAS("sync_tahanan", { list: dirTahanan }, dir);
+    await syncAllToGAS("sync_tahanan", { list: dirTahanan }, dir);
+    lastFetchTime = 0;
     res.status(201).json({ status: "success", data: newTahanan });
   });
 
-  app.put("/api/tahanan/:id", (req: Request, res: Response) => {
+  app.put("/api/tahanan/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
+    const userContext = getUserContext(req);
+    if (userContext.role === "Penuntut Umum Koneksitas" || userContext.role === "Penyidik Koneksitas") {
+      return res.status(403).json({
+        status: "error",
+        message: "Akses Ditolak: Pejabat Penandatangan memiliki akses Read-Only untuk Master Tahanan.",
+      });
+    }
+
     const idx = tahananList.findIndex((t) => t.id === id);
     if (idx === -1) {
       return res.status(404).json({ status: "error", message: "Data tidak ditemukan." });
     }
-    tahananList[idx] = { ...tahananList[idx], ...req.body };
-    const dir = tahananList[idx].direktorat || 'Penuntutan';
-    const dirTahanan = tahananList.filter(t => t.direktorat === dir);
-    syncAllToGAS("sync_tahanan", { list: dirTahanan }, dir);
+
+    const prevDir = tahananList[idx].direktorat || userContext.direktorat || 'Penuntutan';
+    const newDir: Direktorat = req.body.direktorat || userContext.direktorat || prevDir;
+
+    tahananList[idx] = { ...tahananList[idx], ...req.body, direktorat: newDir };
+    
+    // Sync both previous dir and new dir if changed
+    const dirTahananNew = tahananList.filter(t => t.direktorat === newDir);
+    await syncAllToGAS("sync_tahanan", { list: dirTahananNew }, newDir);
+
+    if (prevDir !== newDir) {
+      const dirTahananPrev = tahananList.filter(t => t.direktorat === prevDir);
+      await syncAllToGAS("sync_tahanan", { list: dirTahananPrev }, prevDir);
+    }
+
+    lastFetchTime = 0;
     res.json({ status: "success", data: tahananList[idx] });
   });
 
-  app.delete("/api/tahanan/:id", (req: Request, res: Response) => {
+  app.delete("/api/tahanan/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
+    const userContext = getUserContext(req);
+    if (userContext.role && userContext.role !== "Admin" && userContext.role !== "Staff") {
+      return res.status(403).json({ status: "error", message: "Akses Ditolak: Hanya Administrator dan Staff yang berwenang menghapus data tahanan." });
+    }
+
     const target = tahananList.find(t => t.id === id);
     if (!target) return res.status(404).json({ status: "error", message: "Data tidak ditemukan." });
-    const dir = target.direktorat || 'Penuntutan';
+
+    if (userContext.direktorat && (target.direktorat || 'Penuntutan') !== userContext.direktorat) {
+      return res.status(403).json({
+        status: "error",
+        message: `Akses Ditolak: Anda hanya berwenang menghapus tahanan Direktorat ${userContext.direktorat}.`,
+      });
+    }
+
+    const dir = target.direktorat || userContext.direktorat || 'Penuntutan';
     tahananList = tahananList.filter((t) => t.id !== id);
     const dirTahanan = tahananList.filter(t => t.direktorat === dir);
-    syncAllToGAS("sync_tahanan", { list: dirTahanan }, dir);
+    await syncAllToGAS("sync_tahanan", { list: dirTahanan }, dir);
+    lastFetchTime = 0;
     res.json({ status: "success", message: "Data dihapus." });
   });
 
   // ==========================================
-  // AKUN / USER MANAGEMENT ROUTES
+  // AKUN / USER MANAGEMENT ROUTES (ADMIN & DIRECTORATE PROTECTED)
   // ==========================================
 
   app.get("/api/akun", async (req: Request, res: Response) => {
     await fetchAllFromGAS();
-    const direktorat = req.query.direktorat as string;
-    let result = [...akunList];
-    if (direktorat && direktorat !== 'Semua') {
-      result = result.filter(a => a.direktorat === direktorat);
+    const userContext = getUserContext(req);
+    const targetDir = (req.query.direktorat as string) || userContext.direktorat;
+    let result = akunList.map(a => {
+      const safe = { ...a };
+      safe.password = safe.password ? "••••••••" : "";
+      return safe;
+    });
+    if (targetDir && targetDir !== 'Semua') {
+      result = result.filter(a => (a.direktorat || 'Penuntutan') === targetDir);
     }
     res.json({ status: "success", data: result });
   });
 
-  app.post("/api/akun", (req: Request, res: Response) => {
-    const dir: Direktorat = req.body.direktorat === 'Penindakan' ? 'Penindakan' : 'Penuntutan';
-    const newAkun: AkunUser = { id: `a-${Date.now()}`, direktorat: dir, ...req.body };
+  app.post("/api/akun", async (req: Request, res: Response) => {
+    const userContext = getUserContext(req);
+    if (userContext.role && userContext.role !== "Admin") {
+      return res.status(403).json({ status: "error", message: "Akses Ditolak: Hanya Administrator yang berwenang membuat akun." });
+    }
+
+    const dir: Direktorat = req.body.direktorat || userContext.direktorat || 'Penuntutan';
+    if (userContext.direktorat && req.body.direktorat && userContext.direktorat !== req.body.direktorat) {
+      return res.status(403).json({
+        status: "error",
+        message: `Akses Ditolak: Anda hanya berwenang membuat akun untuk Direktorat ${userContext.direktorat}.`,
+      });
+    }
+
+    const rawPassword = req.body.password || "123456";
+    const hashedPassword = hashPassword(rawPassword);
+
+    const newAkun: AkunUser = {
+      id: `a-${Date.now()}`,
+      direktorat: dir,
+      ...req.body,
+      noHp: normalizePhoneNumber(req.body.noHp),
+      password: hashedPassword
+    };
+
     akunList.push(newAkun);
     const dirAkun = akunList.filter(a => a.direktorat === dir);
-    syncAllToGAS("sync_akun", { list: dirAkun }, dir);
-    res.status(201).json({ status: "success", data: newAkun });
+    await syncAllToGAS("sync_akun", { list: dirAkun }, dir);
+    lastFetchTime = 0;
+
+    const safeResp = { ...newAkun };
+    safeResp.password = "••••••••";
+    res.status(201).json({ status: "success", data: safeResp });
   });
 
-  app.put("/api/akun/:id", (req: Request, res: Response) => {
+  app.put("/api/akun/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
-    const idx = akunList.findIndex((a) => a.id === id);
+    const userContext = getUserContext(req);
+
+    // Find by exact ID first, then fall back to matching by NIP (handles GAS refresh ID shifts)
+    let idx = akunList.findIndex((a) => a.id === id);
+    if (idx === -1 && userContext.nip) {
+      // Self-edit: find by NIP
+      idx = akunList.findIndex((a) => a.nip === userContext.nip);
+    }
+    if (idx === -1) {
+      // Last resort: find by username from request body
+      const bodyUsername = req.body?.username;
+      if (bodyUsername) {
+        idx = akunList.findIndex((a) => a.username === bodyUsername);
+      }
+    }
     if (idx === -1) return res.status(404).json({ status: "error", message: "Akun tidak ditemukan." });
-    akunList[idx] = { ...akunList[idx], ...req.body };
-    const dir = akunList[idx].direktorat || 'Penuntutan';
-    const dirAkun = akunList.filter(a => a.direktorat === dir);
-    syncAllToGAS("sync_akun", { list: dirAkun }, dir);
-    res.json({ status: "success", data: akunList[idx] });
+
+    // Allow user to edit their own profile OR Admin editing accounts in their directorate
+    const isSelf = userContext.nip && userContext.nip === akunList[idx].nip;
+    const isAdmin = userContext.role === "Admin";
+
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ status: "error", message: "Akses Ditolak: Anda tidak berwenang mengubah akun ini." });
+    }
+
+    if (isAdmin && !isSelf && userContext.direktorat && (akunList[idx].direktorat || 'Penuntutan') !== userContext.direktorat) {
+      return res.status(403).json({
+        status: "error",
+        message: `Akses Ditolak: Anda hanya berwenang mengelola akun Direktorat ${userContext.direktorat}.`,
+      });
+    }
+
+    const prevDir = akunList[idx].direktorat || userContext.direktorat || 'Penuntutan';
+    const newDir: Direktorat = req.body.direktorat || userContext.direktorat || prevDir;
+
+    const updateData = { ...req.body };
+    if (updateData.noHp !== undefined) {
+      updateData.noHp = normalizePhoneNumber(updateData.noHp);
+    }
+    if (updateData.password && updateData.password !== "••••••••") {
+      updateData.password = hashPassword(updateData.password);
+    } else {
+      delete updateData.password;
+    }
+
+    akunList[idx] = { ...akunList[idx], ...updateData, direktorat: newDir };
+    const dirAkunNew = akunList.filter(a => a.direktorat === newDir);
+    await syncAllToGAS("sync_akun", { list: dirAkunNew }, newDir);
+
+    if (prevDir !== newDir) {
+      const dirAkunPrev = akunList.filter(a => a.direktorat === prevDir);
+      await syncAllToGAS("sync_akun", { list: dirAkunPrev }, prevDir);
+    }
+
+    lastFetchTime = 0;
+    const safeResp = { ...akunList[idx] };
+    safeResp.password = "••••••••";
+    res.json({ status: "success", data: safeResp });
   });
 
-  app.delete("/api/akun/:id", (req: Request, res: Response) => {
+  app.delete("/api/akun/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
+    const userContext = getUserContext(req);
+    if (userContext.role && userContext.role !== "Admin") {
+      return res.status(403).json({ status: "error", message: "Akses Ditolak: Hanya Administrator yang berwenang menghapus akun." });
+    }
+
     const target = akunList.find(a => a.id === id);
     if (!target) return res.status(404).json({ status: "error", message: "Akun tidak ditemukan." });
-    const dir = target.direktorat || 'Penuntutan';
+
+    if (userContext.direktorat && (target.direktorat || 'Penuntutan') !== userContext.direktorat) {
+      return res.status(403).json({
+        status: "error",
+        message: `Akses Ditolak: Anda hanya berwenang menghapus akun Direktorat ${userContext.direktorat}.`,
+      });
+    }
+
+    const dir = target.direktorat || userContext.direktorat || 'Penuntutan';
     akunList = akunList.filter((a) => a.id !== id);
     const dirAkun = akunList.filter(a => a.direktorat === dir);
-    syncAllToGAS("sync_akun", { list: dirAkun }, dir);
+    await syncAllToGAS("sync_akun", { list: dirAkun }, dir);
+    lastFetchTime = 0;
     res.json({ status: "success", message: "Akun dihapus." });
   });
 

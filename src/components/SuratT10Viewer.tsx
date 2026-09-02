@@ -77,16 +77,13 @@ export const SuratT10Viewer: React.FC<SuratT10ViewerProps> = ({ permohonan, sett
     const nikTah = tahananDetail?.nik || '3201011306680004';
     const tmpDitahan = tahananDetail?.tempatDitahan || permohonan.lokasiRutan || 'Rumah Tahanan Negara Salemba Cabang Kejaksaan Agung';
 
-    const hrKunjungan = getDayName(permohonan.tanggalKunjungan);
-    const tglKunjunganFormat = permohonan.tanggalKunjungan ? formatTanggalIndo(permohonan.tanggalKunjungan) : '-';
-    const tglSuratFormat = formatTanggalIndo(permohonan.createdAt || new Date().toISOString());
-
-    const nmPenandatangan = permohonan.penandatanganNama || permohonan.namaPetugasPemeriksa || settings?.pejabatNama || '-';
-    const pgkPenandatangan = permohonan.penandatanganPangkat || settings?.pejabatPangkat || '-';
-    const nipPenandatangan = permohonan.penandatanganNip || settings?.pejabatNip || '-';
-    const tipeIdPenandatangan = permohonan.penandatanganTipeIdentitas || 'NIP';
-    const jbtPenandatangan = permohonan.penandatanganJabatan || settings?.pejabatJabatan || (isPenindakan ? 'Penyidik Koneksitas' : 'Kasi Subdit Koordinasi Penuntutan');
-    const ttdUrl = permohonan.penandatanganTtdUrl;
+    const cleanV = (v: any) => (!v || v === '-' || v === 'undefined' || v === 'null') ? '' : String(v).trim();
+    const nmPenandatangan = cleanV(permohonan.penandatanganNama) || cleanV(permohonan.namaPetugasPemeriksa) || cleanV(settings?.pejabatNama) || (isPenindakan ? 'Bambang Triyono, S.H., M.H.' : 'Agus Salim, S.H., M.H.');
+    const pgkPenandatangan = cleanV(permohonan.penandatanganPangkat) || cleanV(settings?.pejabatPangkat) || (isPenindakan ? 'Jaksa Madya (IV/a)' : 'Jaksa Utama Muda (IV/c)');
+    const nipPenandatangan = cleanV(permohonan.penandatanganNip) || cleanV(settings?.pejabatNip) || (isPenindakan ? '197905142003121003' : '197508122000031002');
+    const tipeIdPenandatangan = cleanV(permohonan.penandatanganTipeIdentitas) || 'NIP';
+    const jbtPenandatangan = cleanV(permohonan.penandatanganJabatan) || cleanV(settings?.pejabatJabatan) || (isPenindakan ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas');
+    const ttdUrl = cleanV(permohonan.penandatanganTtdUrl);
 
     const logoUrl = "https://upload.wikimedia.org/wikipedia/commons/b/b6/Kejaksaan_Agung_Republik_Indonesia_new_logo.png";
 
@@ -396,12 +393,15 @@ export const SuratT10Viewer: React.FC<SuratT10ViewerProps> = ({ permohonan, sett
   const tglSurat = formatTanggalIndo(permohonan.createdAt || new Date().toISOString());
 
   // Data Penandatangan (Penuntut Umum / Penyidik Koneksitas)
-  const namaPenandatangan = permohonan.penandatanganNama || permohonan.namaPetugasPemeriksa || settings?.pejabatNama || '-';
-  const pangkatPenandatangan = permohonan.penandatanganPangkat || settings?.pejabatPangkat || '-';
-  const nipPenandatangan = permohonan.penandatanganNip || settings?.pejabatNip || '-';
-  const tipeIdentitasPenandatangan = permohonan.penandatanganTipeIdentitas || 'NIP';
-  const jabatanPenandatangan = permohonan.penandatanganJabatan || settings?.pejabatJabatan || (isPenindakan ? 'Penyidik Koneksitas' : 'Kasi Subdit Koordinasi Penuntutan');
-  const ttdUrlPenandatangan = permohonan.penandatanganTtdUrl;
+  const isPenindakanDoc = permohonan.direktorat === 'Penindakan' || String(permohonan.nomorSurat || "").includes("PMpd");
+  const cleanVal = (v: any) => (!v || v === '-' || v === 'undefined' || v === 'null') ? '' : String(v).trim();
+
+  const namaPenandatangan = cleanVal(permohonan.penandatanganNama) || cleanVal(permohonan.namaPetugasPemeriksa) || cleanVal(settings?.pejabatNama) || (isPenindakanDoc ? 'Bambang Triyono, S.H., M.H.' : 'Agus Salim, S.H., M.H.');
+  const pangkatPenandatangan = cleanVal(permohonan.penandatanganPangkat) || cleanVal(settings?.pejabatPangkat) || (isPenindakanDoc ? 'Jaksa Madya (IV/a)' : 'Jaksa Utama Muda (IV/c)');
+  const nipPenandatangan = cleanVal(permohonan.penandatanganNip) || cleanVal(settings?.pejabatNip) || (isPenindakanDoc ? '197905142003121003' : '197508122000031002');
+  const tipeIdentitasPenandatangan = cleanVal(permohonan.penandatanganTipeIdentitas) || 'NIP';
+  const jabatanPenandatangan = cleanVal(permohonan.penandatanganJabatan) || cleanVal(settings?.pejabatJabatan) || (isPenindakanDoc ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas');
+  const ttdUrlPenandatangan = cleanVal(permohonan.penandatanganTtdUrl);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">

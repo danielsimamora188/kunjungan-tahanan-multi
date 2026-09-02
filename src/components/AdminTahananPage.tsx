@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronUp, AlertCircle, Building2
 } from 'lucide-react';
 import { Tahanan, Direktorat } from '../types';
+import { LoadingScreen } from './LoadingScreen';
 
 const AGAMA_OPTIONS = ['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Konghucu'];
 const PENDIDIKAN_OPTIONS = ['SD', 'SMP/Sederajat', 'SMA/Sederajat', 'D1/D2/D3', 'S1/D4', 'S2', 'S3'];
@@ -48,40 +49,34 @@ export const AdminTahananPage: React.FC = () => {
   const [formError, setFormError] = useState('');
 
   const [viewDetail, setViewDetail] = useState<Tahanan | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Tahanan | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const currentUserStr = localStorage.getItem('userAccount');
   const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
   const currentUserRole: string = currentUser?.role || '';
-  const isPUK = currentUserRole === 'Penuntut Umum Koneksitas' || currentUserRole === 'Penyidik Koneksitas';
+  const userDir: Direktorat = currentUser?.direktorat || 'Penuntutan';
+  const isAdmin = currentUserRole === 'Admin';
+  const isReadOnly = currentUserRole === 'Penuntut Umum Koneksitas' || currentUserRole === 'Penyidik Koneksitas';
 
   useEffect(() => { 
-    if (currentUser?.direktorat) {
-      setActiveTabDir(currentUser.direktorat);
-    }
     fetchList(); 
-  }, []);
-
-  if (isPUK) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-32 gap-4">
-        <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-          <Lock className="w-10 h-10 text-amber-500" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-800">Akses Terbatas</h2>
-        <p className="text-sm text-slate-500 text-center max-w-sm">
-          Halaman <strong>Data Tahanan</strong> tidak tersedia untuk role <strong>{currentUserRole}</strong>.<br />
-          Silakan gunakan <strong>Dashboard</strong> untuk mengelola persetujuan kunjungan.
-        </p>
-      </div>
-    );
-  }
+  }, [userDir]);
 
   const fetchList = async () => {
     setIsLoading(true);
     try {
-      const resp = await fetch('/api/tahanan');
-      const json = await resp.json();
-      if (json.status === 'success') setList(json.data);
+      const resp = await fetch(`/api/tahanan?direktorat=${userDir}`, {
+        headers: {
+          'x-user-role': currentUserRole,
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        }
+      });
+      const data = await resp.json();
+      if (data.status === 'success') {
+        setList(data.data || []);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -90,42 +85,56 @@ export const AdminTahananPage: React.FC = () => {
   };
 
   const handleOpenModal = (item?: Tahanan) => {
-    setFormError('');
     if (item) {
-      setFormData({ ...item });
       setIsEditing(true);
+      setFormData({ ...item });
     } else {
-      const defaultDir = activeTabDir === 'Semua' ? (currentUser?.direktorat || 'Penuntutan') : activeTabDir;
-      setFormData({ ...EMPTY_FORM, direktorat: defaultDir });
       setIsEditing(false);
+      setFormData({ ...EMPTY_FORM, direktorat: userDir });
     }
+    setFormError('');
     setIsModalOpen(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (!formData.namaLengkap || !formData.nik || !formData.tempatDitahan) {
-      setFormError('Nama Lengkap, NIK, dan Tempat Ditahan wajib diisi.');
+
+    if (!formData.namaLengkap || !formData.tempatDitahan) {
+      setFormError('Nama lengkap dan Tempat Ditahan wajib diisi.');
       return;
     }
-    const payload = {
-      ...formData,
-      namaTahanan: formData.namaTahanan || formData.namaLengkap,
-      lokasiRutan: formData.lokasiRutan || formData.tempatDitahan,
-    };
+
     setIsSubmitting(true);
     try {
-      const method = isEditing ? 'PUT' : 'POST';
       const url = isEditing ? `/api/tahanan/${formData.id}` : '/api/tahanan';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const payload = {
+        ...formData,
+        namaTahanan: formData.namaLengkap,
+        direktorat: userDir, // STRICT: Bound to current directorate
+        lokasiRutan: formData.tempatDitahan,
+      };
+
       const resp = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUserRole,
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        },
         body: JSON.stringify(payload),
       });
-      if (resp.ok) {
-        await fetchList();
+
+      const resJson = await resp.json();
+      if (resJson.status === 'success') {
         setIsModalOpen(false);
+        await fetchList();
+      } else {
+        const errJson = resJson;
+        setFormError(errJson.message || 'Gagal menyimpan data.');
       }
     } catch (err) {
       setFormError('Gagal menyimpan data.');
@@ -134,16 +143,29 @@ export const AdminTahananPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Hapus data tahanan ini? Tindakan tidak bisa dibatalkan.')) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget || isReadOnly) return;
+    setIsDeleting(true);
     try {
-      await fetch(`/api/tahanan/${id}`, { method: 'DELETE' });
+      await fetch(`/api/tahanan/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentUserRole,
+          'x-user-direktorat': userDir,
+          'x-user-nip': currentUser?.nip || '',
+        }
+      });
+      setDeleteTarget(null);
       await fetchList();
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const filtered = list.filter(t => {
-    const matchDir = activeTabDir === 'Semua' || (t.direktorat || 'Penuntutan') === activeTabDir;
+    const matchDir = (t.direktorat || 'Penuntutan') === userDir;
     const matchSearch =
       (t.namaLengkap || t.namaTahanan || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.nik || '').includes(searchQuery) ||
@@ -158,6 +180,10 @@ export const AdminTahananPage: React.FC = () => {
     </div>
   );
 
+  if (isLoading) {
+    return <LoadingScreen message={`Memuat Data Tahanan Militer (Direktorat ${userDir})...`} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -165,62 +191,70 @@ export const AdminTahananPage: React.FC = () => {
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">JAMPIDMIL · Kejaksaan RI</p>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">Data Tahanan</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Kelola daftar tahanan militer untuk Direktorat Penuntutan dan Penindakan.</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Daftar data tahanan militer khusus Direktorat {userDir}.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="relative flex-1 sm:flex-initial">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
               placeholder="Cari nama, NIK, lokasi..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-60 pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] shadow-sm"
+              className="w-full sm:w-60 pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] shadow-sm"
             />
           </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-[#0a2e1e] hover:bg-[#0d3d28] text-amber-400 px-4 py-2.5 rounded-xl text-sm font-bold shadow-md transition shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Tambah Tahanan
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center gap-1.5 bg-[#0a2e1e] hover:bg-[#0d3d28] text-amber-400 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Tambah Tahanan
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Tabs Filter Direktorat */}
-      <div className="flex border-b border-slate-200 gap-2">
-        {(['Semua', 'Penuntutan', 'Penindakan'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTabDir(tab)}
-            className={`px-4 py-2.5 text-sm font-bold border-b-2 transition ${
-              activeTabDir === tab
-                ? 'border-[#0a2e1e] text-[#0a2e1e]'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {tab === 'Semua' ? 'Semua Tahanan' : `Tahanan ${tab}`}
-            <span className="ml-2 text-xs py-0.5 px-2 rounded-full bg-slate-100 text-slate-600">
-              {tab === 'Semua' ? list.length : list.filter(t => (t.direktorat || 'Penuntutan') === tab).length}
+      {/* Dedicated Directorate Banner */}
+      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white px-5 py-3.5 rounded-2xl border border-emerald-800 shadow-md flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Master Data Tahanan</p>
+            <h3 className="text-sm font-bold text-white">Direktorat {userDir} · JAMPIDMIL</h3>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-300">
+          {isReadOnly ? (
+            <span className="bg-amber-400/20 text-amber-300 px-3 py-1 rounded-full border border-amber-400/30 font-semibold">
+              Mode Lihat Saja (Read-Only)
             </span>
-          </button>
-        ))}
+          ) : (
+            <span className="bg-white/10 px-3 py-1 rounded-full border border-white/10">
+              Hak Kelola Data Aktif
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-xs text-slate-500 font-medium">Total Tahanan Terfilter</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{filtered.length}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">{filtered.length}</p>
         </div>
-        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 shadow-sm">
+        <div className="bg-emerald-50/80 p-4 rounded-xl border border-emerald-200 shadow-sm">
           <p className="text-xs text-emerald-700 font-semibold">Laki-laki</p>
-          <p className="text-3xl font-bold text-emerald-900 mt-1">{filtered.filter(t => t.jenisKelamin === 'Laki-laki').length}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-emerald-900 mt-1">{filtered.filter(t => t.jenisKelamin === 'Laki-laki').length}</p>
         </div>
-        <div className="bg-pink-50 p-4 rounded-xl border border-pink-200 shadow-sm">
+        <div className="bg-pink-50/80 p-4 rounded-xl border border-pink-200 shadow-sm col-span-2 sm:col-span-1">
           <p className="text-xs text-pink-700 font-semibold">Perempuan</p>
-          <p className="text-3xl font-bold text-pink-900 mt-1">{filtered.filter(t => t.jenisKelamin === 'Perempuan').length}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-pink-900 mt-1">{filtered.filter(t => t.jenisKelamin === 'Perempuan').length}</p>
         </div>
       </div>
 
@@ -268,12 +302,16 @@ export const AdminTahananPage: React.FC = () => {
                         <button onClick={() => setViewDetail(t)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Lihat Detail">
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleOpenModal(t)} className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition" title="Edit">
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(t.id)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!isReadOnly && (
+                          <button onClick={() => handleOpenModal(t)} className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition" title="Edit">
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!isReadOnly && (
+                          <button onClick={() => setDeleteTarget(t)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -339,7 +377,7 @@ export const AdminTahananPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
               {formError && (
                 <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
                   <AlertCircle className="w-4 h-4 shrink-0" /> {formError}
@@ -351,15 +389,18 @@ export const AdminTahananPage: React.FC = () => {
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Direktorat <span className="text-red-500">*</span></label>
-                  <select
-                    value={formData.direktorat || 'Penuntutan'}
-                    onChange={e => setFormData({ ...formData, direktorat: e.target.value as Direktorat })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                  >
-                    <option value="Penuntutan">Direktorat Penuntutan</option>
-                    <option value="Penindakan">Direktorat Penindakan</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Direktorat Penahanan
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`Direktorat ${userDir}`}
+                    className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 cursor-not-allowed"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Data tahanan baru secara otomatis terafiliasi dengan Direktorat {userDir}.
+                  </p>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -453,6 +494,46 @@ export const AdminTahananPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-red-50 border-b border-red-100 p-5 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-slate-900 text-base">Hapus Data Tahanan?</h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Apakah Anda yakin ingin menghapus data tahanan <strong className="text-slate-900">{deleteTarget.namaLengkap || deleteTarget.namaTahanan}</strong> (NIK: {deleteTarget.nik || '-'})?
+                </p>
+                <p className="text-[11px] text-red-600 font-medium mt-1">
+                  *Tindakan ini akan menghapus data dari sistem dan menyinkronkan ke Spreadsheet.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-100 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {isDeleting ? 'Menghapus...' : 'Ya, Hapus Tahanan'}
+              </button>
+            </div>
           </div>
         </div>
       )}

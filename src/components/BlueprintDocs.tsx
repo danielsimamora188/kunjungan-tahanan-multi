@@ -57,7 +57,7 @@ export const BlueprintDocs: React.FC = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10">
+    <div className="space-y-6">
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white rounded-2xl p-6 sm:p-8 border border-emerald-800 shadow-xl">
         <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">
