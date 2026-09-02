@@ -3,7 +3,6 @@ dotenv.config();
 import express, { Request, Response } from "express";
 import path from "path";
 import crypto from "crypto";
-import { createServer as createViteServer } from "vite";
 import { DEFAULT_SETTINGS } from "./src/data/blueprintData";
 import { PermohonanT10, SystemSettings, CreatePermohonanInput, Tahanan, AkunUser, Direktorat } from "./src/types";
 
@@ -1142,6 +1141,7 @@ app.post("/api/login", async (req: Request, res: Response) => {
     const isProductionBuild = process.env.NODE_ENV === "production" || isVercelRuntime;
 
     if (!isProductionBuild) {
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",

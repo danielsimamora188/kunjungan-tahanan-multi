@@ -1,4 +1,4 @@
-import { app, initApp } from '../server';
+import { app, initApp } from '../server.ts';
 
 export default async function handler(req: any, res: any) {
   await initApp();
@@ -11,5 +11,6 @@ export default async function handler(req: any, res: any) {
 
   return app(req, res);
 }
+
 
 
