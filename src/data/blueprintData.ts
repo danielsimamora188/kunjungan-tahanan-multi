@@ -1,0 +1,602 @@
+export const GOOGLE_APPS_SCRIPT_CODE = `/**
+ * ==============================================================================
+ * GOOGLE APPS SCRIPT (GAS) TERPADU - JAMPIDMIL KEJAKSAAN AGUNG RI
+ * INTEGRASI 3 MODUL (Mendukung Multi-Direktorat: Penuntutan & Penindakan)
+ * 1. Data Permohonan Surat Izin T-10
+ * 2. Data Master Tahanan Militer
+ * 3. Data Akun Admin, Staff, Penuntut Umum Koneksitas & Penyidik Koneksitas
+ * ==============================================================================
+ */
+
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var p = readPermohonan(ss);
+  var t = readTahanan(ss);
+  var a = readAkun(ss);
+
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    message: "Data Berhasil Dimuat dari Spreadsheet Google.",
+    permohonan: p,
+    tahanan: t,
+    akun: a
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "success",
+      message: "Webhook Google Apps Script Berjalan.",
+      permohonan: readPermohonan(ss),
+      tahanan: readTahanan(ss),
+      akun: readAkun(ss)
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
+  try {
+    hasLock = lock.tryLock(10000);
+  } catch (err) {}
+
+  try {
+    var rawData = e.postData.contents;
+    var data = {};
+    try {
+      data = JSON.parse(rawData);
+    } catch (parseErr) {
+      data = {};
+    }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var action = data.action || (data.namaPemohon ? "create_permohonan" : "");
+
+    // -------------------------------------------------------------
+    // ACTION BACA: GET ALL DATA FROM SPREADSHEET
+    // -------------------------------------------------------------
+    if (action === "get_all" || action === "read_all" || action === "get_data") {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        permohonan: readPermohonan(ss),
+        tahanan: readTahanan(ss),
+        akun: readAkun(ss)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // -------------------------------------------------------------
+    // MODUL 1: DATA MASTER TAHANAN (Tab: Data_Tahanan)
+    // -------------------------------------------------------------
+    if (action === "sync_tahanan") {
+      var sheetT = ss.getSheetByName("Data_Tahanan");
+      if (!sheetT) sheetT = ss.insertSheet("Data_Tahanan");
+      sheetT.clear();
+      sheetT.appendRow([
+        "ID", "Nama Lengkap", "Direktorat", "Pangkat / NRP", "Satuan Asal", "Tempat Lahir", "Tanggal Lahir",
+        "Jenis Kelamin", "Kebangsaan", "Tempat Tinggal", "Agama",
+        "Pekerjaan", "Pendidikan", "NIK", "Tempat Ditahan"
+      ]);
+      sheetT.getRange("A1:O1").setFontWeight("bold").setBackground("#004d26").setFontColor("#ffffff");
+
+      if (Array.isArray(data.list)) {
+        data.list.forEach(function(t) {
+          sheetT.appendRow([
+            t.id || "",
+            t.namaLengkap || t.namaTahanan || "",
+            t.direktorat || "Penuntutan",
+            t.pangkatNrpTahanan || t.pangkat || "-",
+            t.satuanTahanan || t.satuan || "-",
+            t.tempatLahir || "",
+            t.tanggalLahir || "",
+            t.jenisKelamin || "",
+            t.kebangsaan || "Indonesia",
+            t.tempatTinggal || "",
+            t.agama || "",
+            t.pekerjaan || "",
+            t.pendidikan || "",
+            "'" + (t.nik || ""),
+            t.tempatDitahan || t.lokasiRutan || ""
+          ]);
+        });
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Data Tahanan Berhasil Disinkronkan." }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // -------------------------------------------------------------
+    // MODUL 2: DATA AKUN STAFF & PEJABAT E-SIGN (Tab: Akun_dan_ESign)
+    // -------------------------------------------------------------
+    else if (action === "sync_akun") {
+      var sheetA = ss.getSheetByName("Akun_dan_ESign") || ss.getSheetByName("Data_Akun") || ss.getSheetByName("Akun") || ss.getSheetByName("Data Akun");
+      if (!sheetA) sheetA = ss.insertSheet("Akun_dan_ESign");
+      sheetA.clear();
+      sheetA.appendRow([
+        "ID", "Nama Lengkap", "Direktorat", "NIP / NRP", "Tipe Identitas", "Pangkat",
+        "Jabatan", "Role / Peran", "Username", "Password", "Email Dinas", "No WhatsApp",
+        "Status E-Sign", "Gambar Tanda Tangan"
+      ]);
+      sheetA.getRange("A1:N1").setFontWeight("bold").setBackground("#004d26").setFontColor("#ffffff");
+
+      if (Array.isArray(data.list)) {
+        data.list.forEach(function(a) {
+          var ttdData = a.fotoTandaTangan || "";
+          if (ttdData.length > 45000) ttdData = ttdData.substring(0, 45000);
+          sheetA.appendRow([
+            a.id || "",
+            a.nama || "",
+            a.direktorat || "Penuntutan",
+            "'" + (a.nip || ""),
+            a.tipeIdentitas || "NIP",
+            a.pangkat || "",
+            a.jabatan || "",
+            a.role || "",
+            a.username || "",
+            a.password || "",
+            a.email || "",
+            a.noHp || "",
+            a.eSignEnabled ? "AKTIF" : "NONAKTIF",
+            ttdData
+          ]);
+        });
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Data Akun Berhasil Disinkronkan." }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // -------------------------------------------------------------
+    // MODUL 3: DATA PERMOHONAN SURAT T-10 (Tab: Data_Permohonan_T10)
+    // -------------------------------------------------------------
+    else if (action === "sync_permohonan") {
+      var sheetP = ss.getSheetByName("Data_Permohonan_T10");
+      if (!sheetP) sheetP = ss.insertSheet("Data_Permohonan_T10");
+      sheetP.clear();
+      sheetP.appendRow([
+        "No. Surat T-10", "Nomor Urut", "Direktorat", "Waktu Pendaftaran", "Nama Pemohon",
+        "NIK Pemohon", "No WhatsApp", "Hubungan", "Alamat Pemohon", "Pekerjaan Pemohon",
+        "Nama Tahanan", "Pangkat/NRP", "Satuan", "Tempat Ditahan", "Tgl Kunjungan",
+        "Sesi", "Keperluan", "Jumlah Pengunjung", "Status Permohonan",
+        "Catatan Petugas", "Penandatangan Nama", "Penandatangan Pangkat",
+        "Penandatangan NIP", "Penandatangan Tipe Identitas", "Penandatangan Jabatan",
+        "Penandatangan TTD URL", "Foto KTP"
+      ]);
+      sheetP.getRange("A1:AA1").setFontWeight("bold").setBackground("#004d26").setFontColor("#ffffff");
+
+      if (Array.isArray(data.list)) {
+        data.list.forEach(function(item) {
+          var ktpData = item.fotoKTP || "-";
+          if (ktpData.length > 45000) ktpData = ktpData.substring(0, 45000);
+          var ttdData = item.penandatanganTtdUrl || "-";
+          if (ttdData.length > 45000) ttdData = ttdData.substring(0, 45000);
+          function formatDateForSheet(d) {
+            var dateObj = d ? new Date(d) : new Date();
+            if (isNaN(dateObj.getTime())) dateObj = new Date();
+            var yr = dateObj.getFullYear();
+            var mo = String(dateObj.getMonth() + 1).padStart(2, '0');
+            var dy = String(dateObj.getDate()).padStart(2, '0');
+            var hr = String(dateObj.getHours()).padStart(2, '0');
+            var mn = String(dateObj.getMinutes()).padStart(2, '0');
+            var sc = String(dateObj.getSeconds()).padStart(2, '0');
+            return yr + '-' + mo + '-' + dy + ' ' + hr + ':' + mn + ':' + sc;
+          }
+
+          sheetP.appendRow([
+            item.nomorSurat || "-",
+            item.nomorUrut || "-",
+            item.direktorat || "Penuntutan",
+            formatDateForSheet(item.createdAt),
+            item.namaPemohon || "-",
+            "'" + (item.nikPemohon || ""),
+            item.noWhatsApp || "-",
+            item.hubungan || "-",
+            item.alamatPemohon || "-",
+            item.pekerjaanPemohon || "-",
+            item.namaTahanan || "-",
+            item.pangkatNrpTahanan || "-",
+            item.satuanTahanan || "-",
+            item.lokasiRutan || "RTM Guntur",
+            item.tanggalKunjungan || "-",
+            item.sesiKunjungan || "-",
+            item.keperluanKunjungan || "-",
+            item.jumlahPengunjung || 1,
+            item.status || "Diproses",
+            item.catatanPetugas || "-",
+            item.penandatanganNama || "-",
+            item.penandatanganPangkat || "-",
+            "'" + (item.penandatanganNip || ""),
+            item.penandatanganTipeIdentitas || "NIP",
+            item.penandatanganJabatan || "-",
+            ttdData,
+            ktpData
+          ]);
+        });
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Data Permohonan T-10 Berhasil Disinkronkan." }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    else {
+      var sheetP = ss.getSheetByName("Data_Permohonan_T10");
+      if (!sheetP) sheetP = ss.getSheetByName("Permohonan_T10") || ss.insertSheet("Data_Permohonan_T10");
+
+      var headers = [
+        "No. Surat T-10", "Nomor Urut", "Direktorat", "Waktu Pendaftaran", "Nama Pemohon",
+        "NIK Pemohon", "No WhatsApp", "Hubungan", "Alamat Pemohon", "Pekerjaan Pemohon",
+        "Nama Tahanan", "Pangkat/NRP", "Satuan", "Tempat Ditahan", "Tgl Kunjungan",
+        "Sesi", "Keperluan", "Jumlah Pengunjung", "Status Permohonan",
+        "Catatan Petugas", "Penandatangan Nama", "Penandatangan Pangkat",
+        "Penandatangan NIP", "Penandatangan Tipe Identitas", "Penandatangan Jabatan",
+        "Penandatangan TTD URL", "Foto KTP"
+      ];
+
+      if (sheetP.getLastRow() === 0) {
+        sheetP.appendRow(headers);
+        sheetP.getRange("A1:AA1").setFontWeight("bold").setBackground("#004d26").setFontColor("#ffffff");
+      }
+
+      var nik = String(data.nikPemohon || "").trim();
+      var defaultPrefix = data.direktorat === "Penindakan" ? "/PM.3/PMpd.1/" : "/PM.3/PMpt.1/";
+      var nomorSuratT10 = data.nomorSurat || ("B-" + (sheetP.getLastRow()) + defaultPrefix + "08/2026");
+      var ktpData = data.fotoKTP || "-";
+      if (ktpData.length > 45000) ktpData = ktpData.substring(0, 45000);
+      var ttdData = data.penandatanganTtdUrl || "-";
+      if (ttdData.length > 45000) ttdData = ttdData.substring(0, 45000);
+
+      function formatDateForSheet(d) {
+        var dateObj = d ? new Date(d) : new Date();
+        if (isNaN(dateObj.getTime())) dateObj = new Date();
+        var yr = dateObj.getFullYear();
+        var mo = String(dateObj.getMonth() + 1).padStart(2, '0');
+        var dy = String(dateObj.getDate()).padStart(2, '0');
+        var hr = String(dateObj.getHours()).padStart(2, '0');
+        var mn = String(dateObj.getMinutes()).padStart(2, '0');
+        var sc = String(dateObj.getSeconds()).padStart(2, '0');
+        return yr + '-' + mo + '-' + dy + ' ' + hr + ':' + mn + ':' + sc;
+      }
+
+      sheetP.appendRow([
+        nomorSuratT10,
+        data.nomorUrut || sheetP.getLastRow(),
+        data.direktorat || "Penuntutan",
+        formatDateForSheet(data.createdAt),
+        data.namaPemohon || "-",
+        "'" + nik,
+        data.noWhatsApp || "-",
+        data.hubungan || "-",
+        data.alamatPemohon || "-",
+        data.pekerjaanPemohon || "-",
+        data.namaTahanan || "-",
+        data.pangkatNrpTahanan || "-",
+        data.satuanTahanan || "-",
+        data.lokasiRutan || "RTM Guntur",
+        data.tanggalKunjungan || "-",
+        data.sesiKunjungan || "-",
+        data.keperluanKunjungan || "-",
+        data.jumlahPengunjung || 1,
+        data.status || "Diproses",
+        data.catatanPetugas || "-",
+        data.penandatanganNama || "-",
+        data.penandatanganPangkat || "-",
+        "'" + (data.penandatanganNip || ""),
+        data.penandatanganTipeIdentitas || "NIP",
+        data.penandatanganJabatan || "-",
+        ttdData,
+        ktpData
+      ]);
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "Permohonan T-10 Berhasil Dicatat.",
+        data: { nomorSurat: nomorSuratT10, status: "Diproses" }
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    if (hasLock) {
+      try { lock.releaseLock(); } catch (e) {}
+    }
+  }
+}
+
+function readPermohonan(ss) {
+  var sheet = ss.getSheetByName("Data_Permohonan_T10") || ss.getSheetByName("Permohonan_T10");
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  var list = [];
+
+  var header = data[0];
+  var headerStr = header.map(function(h) { return String(h).toLowerCase(); });
+  var hasDir = headerStr.indexOf("direktorat") >= 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!row[0]) continue;
+
+    if (hasDir) {
+      // 27 Kolom dengan Direktorat
+      list.push({
+        id: "p-sheet-" + i,
+        nomorSurat: String(row[0] || ""),
+        nomorUrut: Number(row[1]) || i,
+        direktorat: (String(row[2] || "").toLowerCase().includes("tindak") ? "Penindakan" : "Penuntutan"),
+        tahun: 2026,
+        createdAt: row[3] ? new Date(row[3]).toISOString() : new Date().toISOString(),
+        namaPemohon: String(row[4] || ""),
+        nikPemohon: String(row[5] || "").replace(/^'/, ""),
+        noWhatsApp: String(row[6] || ""),
+        hubungan: String(row[7] || "Keluarga Inti"),
+        alamatPemohon: String(row[8] || ""),
+        pekerjaanPemohon: String(row[9] || ""),
+        namaTahanan: String(row[10] || ""),
+        pangkatNrpTahanan: String(row[11] || ""),
+        satuanTahanan: String(row[12] || ""),
+        lokasiRutan: String(row[13] || "RTM Guntur"),
+        tanggalKunjungan: row[14] ? String(row[14]) : "",
+        sesiKunjungan: String(row[15] || ""),
+        keperluanKunjungan: String(row[16] || ""),
+        jumlahPengunjung: Number(row[17]) || 1,
+        status: String(row[18] || "Diproses"),
+        catatanPetugas: String(row[19] || ""),
+        penandatanganNama: String(row[20] || ""),
+        penandatanganPangkat: String(row[21] || ""),
+        penandatanganNip: String(row[22] || "").replace(/^'/, ""),
+        penandatanganTipeIdentitas: String(row[23] || "NIP"),
+        penandatanganJabatan: String(row[24] || ""),
+        penandatanganTtdUrl: String(row[25] || ""),
+        fotoKTP: String(row[26] || "")
+      });
+    } else {
+      list.push({
+        id: "p-sheet-" + i,
+        nomorSurat: String(row[0] || ""),
+        nomorUrut: Number(row[1]) || i,
+        direktorat: String(row[0] || "").includes("PMpd") ? "Penindakan" : "Penuntutan",
+        tahun: 2026,
+        createdAt: row[2] ? new Date(row[2]).toISOString() : new Date().toISOString(),
+        namaPemohon: String(row[3] || ""),
+        nikPemohon: String(row[4] || "").replace(/^'/, ""),
+        noWhatsApp: String(row[5] || ""),
+        hubungan: String(row[6] || "Keluarga Inti"),
+        alamatPemohon: String(row[7] || ""),
+        pekerjaanPemohon: String(row[8] || ""),
+        namaTahanan: String(row[9] || ""),
+        pangkatNrpTahanan: String(row[10] || ""),
+        satuanTahanan: String(row[11] || ""),
+        lokasiRutan: String(row[12] || "RTM Guntur"),
+        tanggalKunjungan: row[13] ? String(row[13]) : "",
+        sesiKunjungan: String(row[14] || ""),
+        keperluanKunjungan: String(row[15] || ""),
+        jumlahPengunjung: Number(row[16]) || 1,
+        status: String(row[17] || "Diproses"),
+        catatanPetugas: String(row[18] || ""),
+        penandatanganNama: String(row[19] || ""),
+        penandatanganPangkat: String(row[20] || ""),
+        penandatanganNip: String(row[21] || "").replace(/^'/, ""),
+        penandatanganTipeIdentitas: String(row[22] || "NIP"),
+        penandatanganJabatan: String(row[23] || ""),
+        penandatanganTtdUrl: String(row[24] || ""),
+        fotoKTP: String(row[25] || "")
+      });
+    }
+  }
+  return list;
+}
+
+function readTahanan(ss) {
+  var sheet = ss.getSheetByName("Data_Tahanan");
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  var list = [];
+
+  var header = data[0];
+  var headerStr = header.map(function(h) { return String(h).toLowerCase(); });
+  var hasDir = headerStr.indexOf("direktorat") >= 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!row[0] && !row[1]) continue;
+
+    if (hasDir) {
+      list.push({
+        id: String(row[0] || ("t-" + i)),
+        namaLengkap: String(row[1] || ""),
+        namaTahanan: String(row[1] || ""),
+        direktorat: String(row[2] || "").toLowerCase().includes("tindak") ? "Penindakan" : "Penuntutan",
+        pangkatNrpTahanan: String(row[3] || "-"),
+        satuanTahanan: String(row[4] || "-"),
+        tempatLahir: String(row[5] || ""),
+        tanggalLahir: row[6] ? String(row[6]) : "",
+        jenisKelamin: String(row[7] || "Laki-laki"),
+        kebangsaan: String(row[8] || "Indonesia"),
+        tempatTinggal: String(row[9] || ""),
+        agama: String(row[10] || ""),
+        pekerjaan: String(row[11] || ""),
+        pendidikan: String(row[12] || ""),
+        nik: String(row[13] || "").replace(/^'/, ""),
+        tempatDitahan: String(row[14] || ""),
+        lokasiRutan: String(row[14] || "")
+      });
+    } else {
+      list.push({
+        id: String(row[0] || ("t-" + i)),
+        namaLengkap: String(row[1] || ""),
+        namaTahanan: String(row[1] || ""),
+        direktorat: "Penuntutan",
+        pangkatNrpTahanan: String(row[2] || "-"),
+        satuanTahanan: String(row[3] || "-"),
+        tempatLahir: String(row[4] || ""),
+        tanggalLahir: row[5] ? String(row[5]) : "",
+        jenisKelamin: String(row[6] || "Laki-laki"),
+        kebangsaan: String(row[7] || "Indonesia"),
+        tempatTinggal: String(row[8] || ""),
+        agama: String(row[9] || ""),
+        pekerjaan: String(row[10] || ""),
+        pendidikan: String(row[11] || ""),
+        nik: String(row[12] || "").replace(/^'/, ""),
+        tempatDitahan: String(row[13] || ""),
+        lokasiRutan: String(row[13] || "")
+      });
+    }
+  }
+  return list;
+}
+
+function readAkun(ss) {
+  var sheet = ss.getSheetByName("Akun_dan_ESign") || ss.getSheetByName("Data_Akun") || ss.getSheetByName("Akun") || ss.getSheetByName("Data Akun");
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  var list = [];
+
+  var header = data[0];
+  var headerStr = header.map(function(h) { return String(h).toLowerCase(); });
+  var hasDir = headerStr.indexOf("direktorat") >= 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!row[0] && !row[1]) continue;
+
+    if (hasDir) {
+      list.push({
+        id: String(row[0] || ("a-" + i)),
+        nama: String(row[1] || ""),
+        direktorat: String(row[2] || "").toLowerCase().includes("tindak") ? "Penindakan" : "Penuntutan",
+        nip: String(row[3] || "").replace(/^'/, ""),
+        tipeIdentitas: String(row[4] || "NIP"),
+        pangkat: String(row[5] || ""),
+        jabatan: String(row[6] || ""),
+        role: String(row[7] || "Staff"),
+        username: String(row[8] || ""),
+        password: String(row[9] || ""),
+        email: String(row[10] || ""),
+        noHp: String(row[11] || ""),
+        eSignEnabled: String(row[12]).toUpperCase() === "AKTIF",
+        fotoTandaTangan: String(row[13] || "")
+      });
+    } else {
+      var r = String(row[6] || "Staff");
+      var d = "Penuntutan";
+      if (r.toLowerCase().includes("penyidik") || String(row[5] || "").toLowerCase().includes("penindakan")) {
+        d = "Penindakan";
+      }
+      list.push({
+        id: String(row[0] || ("a-" + i)),
+        nama: String(row[1] || ""),
+        direktorat: d,
+        nip: String(row[2] || "").replace(/^'/, ""),
+        tipeIdentitas: String(row[3] || "NIP"),
+        pangkat: String(row[4] || ""),
+        jabatan: String(row[5] || ""),
+        role: r,
+        username: String(row[7] || ""),
+        password: String(row[8] || ""),
+        email: String(row[9] || ""),
+        noHp: String(row[10] || ""),
+        eSignEnabled: String(row[11]).toUpperCase() === "AKTIF",
+        fotoTandaTangan: String(row[12] || "")
+      });
+    }
+  }
+  return list;
+}
+`;
+
+import { PermohonanT10, SystemSettings, AkunUser, Tahanan } from '../types';
+
+export const INITIAL_SEED_AKUN: AkunUser[] = [
+  {
+    id: "a-penuntutan-admin",
+    nama: "Administrator Penuntutan",
+    nip: "198001012005011001",
+    tipeIdentitas: "NIP",
+    pangkat: "Jaksa Madya (IV/a)",
+    jabatan: "Admin Subdit Penuntutan",
+    role: "Admin",
+    direktorat: "Penuntutan",
+    email: "admin.penuntutan@kejaksaan.go.id",
+    noHp: "081234567890",
+    username: "admin_penuntutan",
+    password: "admin123",
+    eSignEnabled: false,
+    fotoTandaTangan: ""
+  },
+  {
+    id: "a-penuntutan-puk",
+    nama: "Arinto Kusumo, S.H., M.H.",
+    nip: "197804222002121003",
+    tipeIdentitas: "NIP",
+    pangkat: "Jaksa Madya (IV/a)",
+    jabatan: "Penuntut Umum Koneksitas",
+    role: "Penuntut Umum Koneksitas",
+    direktorat: "Penuntutan",
+    email: "arinto.kusumo@kejaksaan.go.id",
+    noHp: "081288009988",
+    username: "jaksa_penuntutan",
+    password: "admin123",
+    eSignEnabled: true,
+    fotoTandaTangan: ""
+  },
+  {
+    id: "a-penindakan-admin",
+    nama: "Administrator Penindakan",
+    nip: "198203152006041002",
+    tipeIdentitas: "NIP",
+    pangkat: "Jaksa Muda (III/d)",
+    jabatan: "Admin Subdit Penindakan",
+    role: "Admin",
+    direktorat: "Penindakan",
+    email: "admin.penindakan@kejaksaan.go.id",
+    noHp: "081398765432",
+    username: "admin_penindakan",
+    password: "admin123",
+    eSignEnabled: false,
+    fotoTandaTangan: ""
+  },
+  {
+    id: "a-penindakan-penyidik",
+    nama: "Bambang Triyono, S.H., M.H.",
+    nip: "197905102003121002",
+    tipeIdentitas: "NIP",
+    pangkat: "Jaksa Madya (IV/a)",
+    jabatan: "Penyidik Koneksitas",
+    role: "Penyidik Koneksitas",
+    direktorat: "Penindakan",
+    email: "penyidik.penindakan@kejaksaan.go.id",
+    noHp: "081289001122",
+    username: "penyidik_penindakan",
+    password: "admin123",
+    eSignEnabled: true,
+    fotoTandaTangan: ""
+  }
+];
+
+export const INITIAL_SEED_TAHANAN: Tahanan[] = [];
+
+export const INITIAL_SEED_PERMOHONAN: PermohonanT10[] = [];
+
+export const DEFAULT_SETTINGS: SystemSettings = {
+  // Spreadsheet & Webhook Penuntutan
+  googleAppsScriptUrl: "https://script.google.com/macros/s/AKfycbyU4X1mYGhuQ_3CliJD8WT4U5mp4vwNOnNUg-0b4uWF2jHVBxXiZ-X7GdnBq3IJPN1XiQ/exec",
+  spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1_98HePK55aFpwm9eNpeMBjQZU8nH1wg0bN7m7U-tiV4/edit?usp=sharing",
+  
+  // Spreadsheet & Webhook Penindakan (Terpisah)
+  googleAppsScriptUrlPenindakan: "",
+  spreadsheetUrlPenindakan: "https://docs.google.com/spreadsheets/d/penindakan-spreadsheet-id/edit?usp=sharing",
+  
+  googleDocTemplateUrl: "https://docs.google.com/document/d/1EvD3bMe-K_6-RliZa6kdbed6Ef_IRdlb/edit?usp=sharing&ouid=109982999574552257586&rtpof=true&sd=true",
+  waGatewayProvider: "simulasi" as const,
+  waApiKey: "",
+  waAdminPhone: "081288009988",
+  autoSyncSheets: true,
+  autoNotifyWa: true,
+  pejabatNama: "Arinto Kusumo, S.H., M.H.",
+  pejabatPangkat: "Jaksa Madya",
+  pejabatNip: "197804222002121003",
+  pejabatJabatan: "Kasi Subdit Koordinasi Penuntutan Perkara Koneksitas",
+};

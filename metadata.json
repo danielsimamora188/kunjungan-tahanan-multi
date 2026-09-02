@@ -1,0 +1,6 @@
+{
+  "name": "JAMPIDMIL - Layanan Izin Kunjungan Tahanan (T-10)",
+  "description": "Portal Resmi Permohonan Izin Kunjungan Tahanan (Surat T-10) Jaksa Agung Muda Bidang Tindak Pidana Militer - Kejaksaan RI dengan validasi NIK, penomoran otomatis anti-duplikasi, integrasi Google Sheets, dan notifikasi WhatsApp Gateway.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
