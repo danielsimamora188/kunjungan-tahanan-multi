@@ -46,8 +46,13 @@ let permohonanList: PermohonanT10[] = [];
 let tahananList: Tahanan[] = [];
 let akunList: AkunUser[] = [];
 
-const defaultGasUrl = process.env.GAS_WEBHOOK_URL || DEFAULT_SETTINGS.googleAppsScriptUrl;
-const defaultGasUrlPenindakan = process.env.GAS_WEBHOOK_URL_PENINDAKAN || (DEFAULT_SETTINGS.googleAppsScriptUrlPenindakan || "");
+function cleanEnvUrl(val?: string): string {
+  if (!val) return "";
+  return val.trim().replace(/^['"]|['"]$/g, "");
+}
+
+const defaultGasUrl = cleanEnvUrl(process.env.GAS_WEBHOOK_URL) || DEFAULT_SETTINGS.googleAppsScriptUrl;
+const defaultGasUrlPenindakan = cleanEnvUrl(process.env.GAS_WEBHOOK_URL_PENINDAKAN) || (DEFAULT_SETTINGS.googleAppsScriptUrlPenindakan || "");
 let systemSettings: SystemSettings = {
   ...DEFAULT_SETTINGS,
   googleAppsScriptUrl: defaultGasUrl,
@@ -59,10 +64,10 @@ let systemSettings: SystemSettings = {
 let isInitialized = false;
 export async function initApp() {
   if (process.env.GAS_WEBHOOK_URL) {
-    systemSettings.googleAppsScriptUrl = process.env.GAS_WEBHOOK_URL;
+    systemSettings.googleAppsScriptUrl = cleanEnvUrl(process.env.GAS_WEBHOOK_URL);
   }
   if (process.env.GAS_WEBHOOK_URL_PENINDAKAN) {
-    systemSettings.googleAppsScriptUrlPenindakan = process.env.GAS_WEBHOOK_URL_PENINDAKAN;
+    systemSettings.googleAppsScriptUrlPenindakan = cleanEnvUrl(process.env.GAS_WEBHOOK_URL_PENINDAKAN);
   }
   if (!isInitialized) {
     isInitialized = true;
