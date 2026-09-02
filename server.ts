@@ -91,6 +91,12 @@ let akunList: AkunUser[] = [...DEFAULT_ACCOUNTS];
 
 let isInitialized = false;
 export async function initApp() {
+  if (process.env.GAS_WEBHOOK_URL) {
+    systemSettings.googleAppsScriptUrl = process.env.GAS_WEBHOOK_URL;
+  }
+  if (process.env.GAS_WEBHOOK_URL_PENINDAKAN) {
+    systemSettings.googleAppsScriptUrlPenindakan = process.env.GAS_WEBHOOK_URL_PENINDAKAN;
+  }
   if (!isInitialized) {
     isInitialized = true;
     await fetchAllFromGAS();
