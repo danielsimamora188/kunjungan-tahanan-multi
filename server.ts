@@ -86,7 +86,48 @@ let systemSettings: SystemSettings = {
   googleDocTemplateUrl: "https://docs.google.com/document/d/1EvD3bMe-K_6-RliZa6kdbed6Ef_IRdlb/edit?usp=sharing&ouid=109982999574552257586&rtpof=true&sd=true",
 };
 
-let tahananList: Tahanan[] = [];
+const DEFAULT_TAHANAN: Tahanan[] = [
+  {
+    id: "t-def-pnt-1",
+    namaLengkap: "Kolonel (Inf) Bambang Sudrajat",
+    namaTahanan: "Kolonel (Inf) Bambang Sudrajat",
+    direktorat: "Penuntutan",
+    pangkatNrpTahanan: "Kolonel Inf / 1198002341",
+    satuanTahanan: "Kodam Jaya / TNI AD",
+    tempatLahir: "Jakarta",
+    tanggalLahir: "1978-05-12",
+    jenisKelamin: "Laki-laki",
+    kebangsaan: "Indonesia",
+    tempatTinggal: "Jakarta Timur",
+    agama: "Islam",
+    pekerjaan: "Prajurit TNI",
+    pendidikan: "S1",
+    nik: "3175011205780001",
+    tempatDitahan: "RTM Guntur Pomdam Jaya",
+    lokasiRutan: "RTM Guntur Pomdam Jaya",
+  },
+  {
+    id: "t-def-pnd-1",
+    namaLengkap: "Letkol (Mar) Hendra Kurniawan",
+    namaTahanan: "Letkol (Mar) Hendra Kurniawan",
+    direktorat: "Penindakan",
+    pangkatNrpTahanan: "Letkol Mar / 1199004562",
+    satuanTahanan: "Korps Marinir / TNI AL",
+    tempatLahir: "Surabaya",
+    tanggalLahir: "1982-08-20",
+    jenisKelamin: "Laki-laki",
+    kebangsaan: "Indonesia",
+    tempatTinggal: "Jakarta Selatan",
+    agama: "Islam",
+    pekerjaan: "Prajurit TNI",
+    pendidikan: "S1",
+    nik: "3174022008820002",
+    tempatDitahan: "RTM Guntur Pomdam Jaya",
+    lokasiRutan: "RTM Guntur Pomdam Jaya",
+  }
+];
+
+let tahananList: Tahanan[] = [...DEFAULT_TAHANAN];
 let akunList: AkunUser[] = [...DEFAULT_ACCOUNTS];
 
 let isInitialized = false;
@@ -299,7 +340,9 @@ async function fetchAllFromGAS(forceRefresh = false) {
       }
 
       permohonanList = newPermohonanList;
-      tahananList = newTahananList;
+      if (newTahananList.length > 0) {
+        tahananList = newTahananList;
+      }
       if (newAkunList.length > 0) {
         akunList = newAkunList;
       }
