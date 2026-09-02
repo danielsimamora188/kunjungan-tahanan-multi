@@ -1,3 +1,7 @@
-import { app } from '../server';
+import { app, initApp } from '../server';
 
-export default app;
+export default async function handler(req: any, res: any) {
+  await initApp();
+  return app(req, res);
+}
+

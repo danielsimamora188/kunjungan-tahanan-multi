@@ -39,6 +39,40 @@ export function normalizePhoneNumber(phone: any): string {
 }
 
 export const app = express();
+app.use(express.json({ limit: "50mb" }));
+
+const DEFAULT_ACCOUNTS: AkunUser[] = [
+  {
+    id: "a-default-admin-pnt",
+    nama: "Administrator Penuntutan",
+    nip: "198501012010011001",
+    tipeIdentitas: "NIP",
+    pangkat: "Jaksa Madya / IV a",
+    jabatan: "Kasubdit Penuntutan",
+    role: "Admin",
+    direktorat: "Penuntutan",
+    username: "admin",
+    password: hashPassword("admin123"),
+    email: "admin.penuntutan@kejaksaan.go.id",
+    noHp: "081398765432",
+    eSignEnabled: true,
+  },
+  {
+    id: "a-default-admin-pnd",
+    nama: "Administrator Penindakan",
+    nip: "198602022011011002",
+    tipeIdentitas: "NIP",
+    pangkat: "Jaksa Madya / IV a",
+    jabatan: "Kasubdit Penindakan",
+    role: "Admin",
+    direktorat: "Penindakan",
+    username: "adminpenindakan",
+    password: hashPassword("admin123"),
+    email: "admin.penindakan@kejaksaan.go.id",
+    noHp: "081299887766",
+    eSignEnabled: true,
+  }
+];
 
 // In-Memory persistent store for server session
 let permohonanList: PermohonanT10[] = [];
@@ -53,7 +87,15 @@ let systemSettings: SystemSettings = {
 };
 
 let tahananList: Tahanan[] = [];
-let akunList: AkunUser[] = [];
+let akunList: AkunUser[] = [...DEFAULT_ACCOUNTS];
+
+let isInitialized = false;
+export async function initApp() {
+  if (!isInitialized) {
+    isInitialized = true;
+    await fetchAllFromGAS();
+  }
+}
 
 /**
  * Dynamic / Gap-filling Number Generator for T-10
@@ -252,7 +294,9 @@ async function fetchAllFromGAS(forceRefresh = false) {
 
       permohonanList = newPermohonanList;
       tahananList = newTahananList;
-      akunList = newAkunList;
+      if (newAkunList.length > 0) {
+        akunList = newAkunList;
+      }
     } catch (err) {
       console.warn("GAS fetch error (non-fatal):", err);
     } finally {
@@ -314,18 +358,16 @@ async function dispatchWhatsAppNotification(
   return { success: true, detail: "Simulasi berhasil." };
 }
 
-async function startServer() {
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
-  app.use(express.json());
+// ==========================================
+// API ROUTES
+// ==========================================
 
-  // ==========================================
-  // API ROUTES
-  // ==========================================
-
-  // 0. Admin & Staff Login Endpoint
-  app.post("/api/login", (req: Request, res: Response) => {
-    const { username, password } = req.body;
+// 0. Admin & Staff Login Endpoint
+app.post("/api/login", async (req: Request, res: Response) => {
+  await initApp();
+  const { username, password } = req.body || {};
     const cleanUser = String(username || "").trim().toLowerCase();
     const cleanPass = String(password || "").trim();
 
@@ -1101,32 +1143,32 @@ async function startServer() {
   // ==========================================
   // VITE MIDDLEWARE & STATIC SERVING
   // ==========================================
-  const isVercelRuntime = Boolean(process.env.VERCEL);
-  const isProductionBuild = process.env.NODE_ENV === "production" || isVercelRuntime;
+  async function startServer() {
+    const isVercelRuntime = Boolean(process.env.VERCEL);
+    const isProductionBuild = process.env.NODE_ENV === "production" || isVercelRuntime;
 
-  if (!isProductionBuild) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    if (!isProductionBuild) {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else if (!isVercelRuntime) {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (_req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
+    if (!isVercelRuntime) {
+      app.listen(PORT, "0.0.0.0", async () => {
+        console.log(`[JAMPIDMIL T-10 SERVER] Berjalan di port ${PORT}`);
+        await initApp();
+      });
+    }
   }
-
-  if (!isVercelRuntime) {
-    app.listen(PORT, "0.0.0.0", async () => {
-      console.log(`[JAMPIDMIL T-10 SERVER] Berjalan di port ${PORT}`);
-      await fetchAllFromGAS();
-    });
-  }
-
-  return app;
-}
 
 export default app;
 void startServer();
+
