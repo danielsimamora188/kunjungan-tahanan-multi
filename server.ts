@@ -41,41 +41,11 @@ export function normalizePhoneNumber(phone: any): string {
 export const app = express();
 app.use(express.json({ limit: "50mb" }));
 
-const DEFAULT_ACCOUNTS: AkunUser[] = [
-  {
-    id: "a-default-admin-pnt",
-    nama: "Administrator Penuntutan",
-    nip: "198501012010011001",
-    tipeIdentitas: "NIP",
-    pangkat: "Jaksa Madya / IV a",
-    jabatan: "Kasubdit Penuntutan",
-    role: "Admin",
-    direktorat: "Penuntutan",
-    username: "admin",
-    password: hashPassword("admin123"),
-    email: "admin.penuntutan@kejaksaan.go.id",
-    noHp: "081398765432",
-    eSignEnabled: true,
-  },
-  {
-    id: "a-default-admin-pnd",
-    nama: "Administrator Penindakan",
-    nip: "198602022011011002",
-    tipeIdentitas: "NIP",
-    pangkat: "Jaksa Madya / IV a",
-    jabatan: "Kasubdit Penindakan",
-    role: "Admin",
-    direktorat: "Penindakan",
-    username: "adminpenindakan",
-    password: hashPassword("admin123"),
-    email: "admin.penindakan@kejaksaan.go.id",
-    noHp: "081299887766",
-    eSignEnabled: true,
-  }
-];
-
-// In-Memory persistent store for server session
+// In-Memory persistent store for server session (Strictly populated from Google Spreadsheet)
 let permohonanList: PermohonanT10[] = [];
+let tahananList: Tahanan[] = [];
+let akunList: AkunUser[] = [];
+
 const defaultGasUrl = process.env.GAS_WEBHOOK_URL || DEFAULT_SETTINGS.googleAppsScriptUrl;
 const defaultGasUrlPenindakan = process.env.GAS_WEBHOOK_URL_PENINDAKAN || (DEFAULT_SETTINGS.googleAppsScriptUrlPenindakan || "");
 let systemSettings: SystemSettings = {
@@ -85,50 +55,6 @@ let systemSettings: SystemSettings = {
   spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1_98HePK55aFpwm9eNpeMBjQZU8nH1wg0bN7m7U-tiV4/edit?usp=sharing",
   googleDocTemplateUrl: "https://docs.google.com/document/d/1EvD3bMe-K_6-RliZa6kdbed6Ef_IRdlb/edit?usp=sharing&ouid=109982999574552257586&rtpof=true&sd=true",
 };
-
-const DEFAULT_TAHANAN: Tahanan[] = [
-  {
-    id: "t-def-pnt-1",
-    namaLengkap: "Kolonel (Inf) Bambang Sudrajat",
-    namaTahanan: "Kolonel (Inf) Bambang Sudrajat",
-    direktorat: "Penuntutan",
-    pangkatNrpTahanan: "Kolonel Inf / 1198002341",
-    satuanTahanan: "Kodam Jaya / TNI AD",
-    tempatLahir: "Jakarta",
-    tanggalLahir: "1978-05-12",
-    jenisKelamin: "Laki-laki",
-    kebangsaan: "Indonesia",
-    tempatTinggal: "Jakarta Timur",
-    agama: "Islam",
-    pekerjaan: "Prajurit TNI",
-    pendidikan: "S1",
-    nik: "3175011205780001",
-    tempatDitahan: "RTM Guntur Pomdam Jaya",
-    lokasiRutan: "RTM Guntur Pomdam Jaya",
-  },
-  {
-    id: "t-def-pnd-1",
-    namaLengkap: "Letkol (Mar) Hendra Kurniawan",
-    namaTahanan: "Letkol (Mar) Hendra Kurniawan",
-    direktorat: "Penindakan",
-    pangkatNrpTahanan: "Letkol Mar / 1199004562",
-    satuanTahanan: "Korps Marinir / TNI AL",
-    tempatLahir: "Surabaya",
-    tanggalLahir: "1982-08-20",
-    jenisKelamin: "Laki-laki",
-    kebangsaan: "Indonesia",
-    tempatTinggal: "Jakarta Selatan",
-    agama: "Islam",
-    pekerjaan: "Prajurit TNI",
-    pendidikan: "S1",
-    nik: "3174022008820002",
-    tempatDitahan: "RTM Guntur Pomdam Jaya",
-    lokasiRutan: "RTM Guntur Pomdam Jaya",
-  }
-];
-
-let tahananList: Tahanan[] = [...DEFAULT_TAHANAN];
-let akunList: AkunUser[] = [...DEFAULT_ACCOUNTS];
 
 let isInitialized = false;
 export async function initApp() {
@@ -231,13 +157,31 @@ async function fetchAllFromGAS(forceRefresh = false) {
 
       for (const { url, dir } of urls) {
         try {
-          const resp = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "get_all" }),
-          });
-          if (!resp.ok) continue;
-          const json = await resp.json();
+          let json: any = null;
+          try {
+            const resp = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "get_all" }),
+              redirect: "follow",
+            });
+            if (resp.ok) {
+              json = await resp.json();
+            }
+          } catch (postErr) {
+            console.warn(`POST fetch error for ${dir}, attempting GET:`, postErr);
+          }
+
+          if (!json || json.status !== "success") {
+            try {
+              const respGet = await fetch(url, { method: "GET", redirect: "follow" });
+              if (respGet.ok) {
+                json = await respGet.json();
+              }
+            } catch (getErr) {
+              console.warn(`GET fetch error for ${dir}:`, getErr);
+            }
+          }
           lastFetchTime = Date.now();
           if (json.status === "success") {
             if (Array.isArray(json.permohonan)) {
@@ -340,12 +284,8 @@ async function fetchAllFromGAS(forceRefresh = false) {
       }
 
       permohonanList = newPermohonanList;
-      if (newTahananList.length > 0) {
-        tahananList = newTahananList;
-      }
-      if (newAkunList.length > 0) {
-        akunList = newAkunList;
-      }
+      tahananList = newTahananList;
+      akunList = newAkunList;
     } catch (err) {
       console.warn("GAS fetch error (non-fatal):", err);
     } finally {
