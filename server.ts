@@ -1164,5 +1164,8 @@ app.post("/api/login", async (req: Request, res: Response) => {
   }
 
 export default app;
-void startServer();
+if (!process.env.VERCEL) {
+  void startServer();
+}
+
 
