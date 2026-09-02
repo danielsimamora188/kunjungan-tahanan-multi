@@ -55,6 +55,19 @@ function normalizePhoneNumber(phone) {
 }
 var app = express();
 app.use(express.json({ limit: "50mb" }));
+app.use(async (req, res, next) => {
+  try {
+    const realUrl = req.headers["x-forwarded-uri"] || req.headers["x-matched-path"];
+    if (realUrl && typeof realUrl === "string" && !realUrl.includes("/api/index.")) {
+      req.url = realUrl;
+    }
+    await initApp();
+    next();
+  } catch (err) {
+    console.error("Middleware init error:", err);
+    next();
+  }
+});
 var permohonanList = [];
 var tahananList = [];
 var akunList = [];
@@ -965,21 +978,7 @@ if (!process.env.VERCEL) {
 }
 
 // api/index.ts
-async function handler(req, res) {
-  try {
-    await initApp();
-    const realUrl = req.headers["x-forwarded-uri"] || req.headers["x-matched-path"] || req.url;
-    if (realUrl && typeof realUrl === "string" && !realUrl.includes("/api/index.")) {
-      req.url = realUrl;
-    }
-    return app(req, res);
-  } catch (err) {
-    console.error("Vercel API handler error:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ status: "error", message: err?.message || "Server Internal Error" });
-    }
-  }
-}
+var index_default = app;
 export {
-  handler as default
+  index_default as default
 };
