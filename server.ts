@@ -43,9 +43,21 @@ app.use(express.json({ limit: "50mb" }));
 // Dynamic URL recovery and auto-initialization middleware for Vercel Serverless
 app.use(async (req, res, next) => {
   try {
-    const realUrl = (req.headers['x-forwarded-uri'] as string) || (req.headers['x-matched-path'] as string);
-    if (realUrl && typeof realUrl === 'string' && !realUrl.includes('/api/index.')) {
-      req.url = realUrl;
+    const forwardedUri = (req.headers['x-forwarded-uri'] as string) || 
+                         (req.headers['x-matched-path'] as string) ||
+                         (req.headers['x-vercel-matched-path'] as string);
+    if (forwardedUri && typeof forwardedUri === 'string' && !forwardedUri.includes('/api/index.')) {
+      req.url = forwardedUri;
+    } else if (req.url && (req.url.startsWith('/api/index.js') || req.url.startsWith('/api/index'))) {
+      const parsedUrl = new URL(req.url, 'http://localhost');
+      const subpath = parsedUrl.searchParams.get('__subpath');
+      if (subpath) {
+        parsedUrl.searchParams.delete('__subpath');
+        const query = parsedUrl.searchParams.toString();
+        req.url = `/api/${subpath}${query ? '?' + query : ''}`;
+      } else {
+        req.url = '/api';
+      }
     }
     await initApp();
     next();
@@ -653,7 +665,7 @@ app.post("/api/login", async (req: Request, res: Response) => {
     let itemIndex = permohonanList.findIndex(
       (item) =>
         (item.id === id || item.nomorSurat === id) &&
-        (!userContext.direktorat || userContext.direktorat === 'Semua' || item.direktorat === userContext.direktorat)
+        (!userContext.direktorat || (userContext.direktorat as string) === 'Semua' || item.direktorat === userContext.direktorat)
     );
     if (itemIndex === -1) {
       itemIndex = permohonanList.findIndex((item) => item.id === id || item.nomorSurat === id);
@@ -758,7 +770,7 @@ app.post("/api/login", async (req: Request, res: Response) => {
     let itemIndex = permohonanList.findIndex(
       (item) =>
         (item.id === id || item.nomorSurat === id) &&
-        (!userContext.direktorat || userContext.direktorat === 'Semua' || item.direktorat === userContext.direktorat)
+        (!userContext.direktorat || (userContext.direktorat as string) === 'Semua' || item.direktorat === userContext.direktorat)
     );
     if (itemIndex === -1) {
       itemIndex = permohonanList.findIndex((item) => item.id === id || item.nomorSurat === id);
@@ -1180,7 +1192,15 @@ app.post("/api/login", async (req: Request, res: Response) => {
   }
 
 export default app;
-if (!process.env.VERCEL) {
+
+const isServerlessEnv = Boolean(
+  process.env.VERCEL || 
+  process.env.VERCEL_ENV || 
+  process.env.NOW_REGION || 
+  process.env.AWS_LAMBDA_FUNCTION_NAME
+);
+
+if (!isServerlessEnv) {
   void startServer();
 }
 

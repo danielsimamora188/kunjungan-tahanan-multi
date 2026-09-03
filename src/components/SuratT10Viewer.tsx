@@ -84,6 +84,9 @@ export const SuratT10Viewer: React.FC<SuratT10ViewerProps> = ({ permohonan, sett
     const tipeIdPenandatangan = cleanV(permohonan.penandatanganTipeIdentitas) || 'NIP';
     const jbtPenandatangan = cleanV(permohonan.penandatanganJabatan) || cleanV(settings?.pejabatJabatan) || (isPenindakan ? 'Penyidik Koneksitas' : 'Penuntut Umum Koneksitas');
     const ttdUrl = cleanV(permohonan.penandatanganTtdUrl);
+    const hrKunjungan = getDayName(permohonan.tanggalKunjungan);
+    const tglKunjunganFormat = permohonan.tanggalKunjungan ? formatTanggalIndo(permohonan.tanggalKunjungan) : '-';
+    const tglSuratFormat = formatTanggalIndo(permohonan.createdAt || new Date().toISOString());
 
     const logoUrl = "https://upload.wikimedia.org/wikipedia/commons/b/b6/Kejaksaan_Agung_Republik_Indonesia_new_logo.png";
 
