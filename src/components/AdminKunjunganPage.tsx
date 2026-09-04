@@ -102,9 +102,9 @@ export const AdminKunjunganPage: React.FC = () => {
       'Keperluan', 'Status',
     ];
     const rows = filtered.map(p => [
-      `"${p.nomorSurat}"`, `"${p.direktorat || 'Penuntutan'}"`, `"${p.createdAt}"`, `"${p.namaPemohon}"`,
+      `"${p.nomorSurat}"`, `"${p.direktorat || 'Penuntutan'}"`, `"${formatIndonesianDate(p.createdAt)}"`, `"${p.namaPemohon}"`,
       `"'${p.nikPemohon}"`, `"${p.noWhatsApp}"`, `"${p.hubungan}"`,
-      `"${p.namaTahanan}"`, `"${p.lokasiRutan}"`, `"${p.tanggalKunjungan}"`,
+      `"${p.namaTahanan}"`, `"${p.lokasiRutan}"`, `"${formatIndonesianDate(p.tanggalKunjungan)}"`,
       `"${p.sesiKunjungan}"`, `"${p.keperluanKunjungan}"`, `"${p.status}"`,
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -963,7 +963,12 @@ export const AdminKunjunganPage: React.FC = () => {
                     key={p.id}
                     className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-emerald-50/40 transition`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-slate-700 whitespace-nowrap font-semibold">{p.nomorSurat}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <p className="font-mono text-xs text-slate-800 font-semibold">{p.nomorSurat}</p>
+                      {p.createdAt && (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{formatIndonesianDate(p.createdAt)}</p>
+                      )}
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
                         {p.direktorat || 'Penuntutan'}

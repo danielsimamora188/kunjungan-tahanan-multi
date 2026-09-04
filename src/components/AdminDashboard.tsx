@@ -605,7 +605,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const rows = listToExport.map((p) => [
       `"${p.nomorSurat}"`,
       `"${p.direktorat || 'Penuntutan'}"`,
-      `"${p.createdAt}"`,
+      `"${formatIndonesianDate(p.createdAt)}"`,
       `"${p.namaPemohon}"`,
       `"'${p.nikPemohon}"`,
       `"${p.noWhatsApp}"`,
@@ -613,7 +613,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       `"${p.namaTahanan}"`,
       `"${p.satuanTahanan}"`,
       `"${p.lokasiRutan}"`,
-      `"${p.tanggalKunjungan}"`,
+      `"${formatIndonesianDate(p.tanggalKunjungan)}"`,
       `"${p.sesiKunjungan}"`,
       `"${p.status}"`,
       `"${p.catatanPetugas || '-'}"`,
@@ -1501,7 +1501,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p><strong>Direktorat:</strong> <span className="text-emerald-800 font-bold">{selectedItem.direktorat || 'Penuntutan'}</span></p>
                 <p><strong>Pemohon:</strong> {selectedItem.namaPemohon} ({selectedItem.hubungan})</p>
                 <p><strong>Tahanan:</strong> {selectedItem.namaTahanan} - {selectedItem.satuanTahanan}</p>
-                <p><strong>Rencana:</strong> {selectedItem.tanggalKunjungan} ({selectedItem.sesiKunjungan})</p>
+                <p><strong>Rencana:</strong> {formatIndonesianDate(selectedItem.tanggalKunjungan)} ({selectedItem.sesiKunjungan})</p>
                 <p><strong>WhatsApp:</strong> {selectedItem.noWhatsApp}</p>
               </div>
 

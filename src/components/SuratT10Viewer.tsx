@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Printer, ArrowLeft, ShieldCheck, FileText, Download } from 'lucide-react';
 import { PermohonanT10, SystemSettings, Tahanan } from '../types';
+import { formatIndonesianDate } from '../utils/validation';
 
 interface SuratT10ViewerProps {
   permohonan: PermohonanT10;
@@ -20,13 +21,7 @@ function hitungUmur(tanggalLahir: string): number {
 }
 
 function formatTanggalIndo(dateStr: string): string {
-  if (!dateStr) return '-';
-  const months = [
-    'Januari','Februari','Maret','April','Mei','Juni',
-    'Juli','Agustus','September','Oktober','November','Desember'
-  ];
-  const d = new Date(dateStr);
-  return `${d.getDate() < 10 ? '0' + d.getDate() : d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  return formatIndonesianDate(dateStr);
 }
 
 function getDayName(dateStr: string): string {

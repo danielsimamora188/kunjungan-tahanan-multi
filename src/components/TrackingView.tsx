@@ -348,6 +348,11 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                     <p className="text-lg font-bold font-mono text-[#0a2e1e] mt-0.5">
                       Nomor: {item.nomorSurat}
                     </p>
+                    {item.createdAt && (
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Tgl Pendaftaran: <span className="font-semibold text-slate-700">{formatIndonesianDate(item.createdAt)}</span>
+                      </p>
+                    )}
                   </div>
                   <div>{getStatusBadge(item.status)}</div>
                 </div>

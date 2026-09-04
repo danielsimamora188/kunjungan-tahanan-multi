@@ -584,6 +584,11 @@ export const PublicForm: React.FC<PublicFormProps> = ({
                   required
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] transition"
                 />
+                {tanggalKunjungan && (
+                  <p className="text-[11px] text-emerald-800 font-semibold mt-1">
+                    🗓️ {formatIndonesianDate(tanggalKunjungan)}
+                  </p>
+                )}
               </div>
 
               <div>

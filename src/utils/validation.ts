@@ -148,24 +148,38 @@ export function normalizeWhatsAppNumber(phone: string): { isValid: boolean; norm
 }
 
 /**
- * Formats date to Indonesian locale standard
+ * Formats date to Indonesian standard dd-mmmm-yyyy (contoh: 04-September-2026)
  */
-export function formatIndonesianDate(dateString: string): string {
-  if (!dateString) return '-';
+export function formatIndonesianDate(dateInput: any, delimiter = '-'): string {
+  if (!dateInput || dateInput === '-' || dateInput === 'null' || dateInput === 'undefined') return '-';
   try {
     const months = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
-    // Handle YYYY-MM-DD pattern or standard date string
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
-    const day = String(d.getDate()).padStart(2, '0');
-    const monthName = months[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day} ${monthName} ${year}`;
+    
+    const ymd = normalizeDateToYMD(dateInput);
+    if (ymd) {
+      const parts = ymd.split('-');
+      const year = parts[0];
+      const monthIdx = parseInt(parts[1], 10) - 1;
+      const day = parts[2].padStart(2, '0');
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return `${day}${delimiter}${months[monthIdx]}${delimiter}${year}`;
+      }
+    }
+
+    const d = new Date(dateInput);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthName = months[d.getMonth()];
+      const year = d.getFullYear();
+      return `${day}${delimiter}${monthName}${delimiter}${year}`;
+    }
+
+    return String(dateInput);
   } catch {
-    return dateString;
+    return String(dateInput || '-');
   }
 }
 

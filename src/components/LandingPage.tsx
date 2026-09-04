@@ -63,6 +63,7 @@ export const LandingPage: React.FC = () => {
               </div>
               <p className="text-slate-300 text-xs sm:text-sm mb-6 leading-relaxed">
                 Pengurusan izin kunjungan tahanan tahap penuntutan. Disahkan oleh <strong>Penuntut Umum Koneksitas</strong> dengan nomor registrasi <code>PMpt.1</code>.
+                Tahanan yang sedangan dalam proses pemeriksaan/penyidikan.
               </p>
               <div className="flex flex-wrap gap-2.5">
                 <Link
@@ -93,6 +94,7 @@ export const LandingPage: React.FC = () => {
               </div>
               <p className="text-slate-300 text-xs sm:text-sm mb-6 leading-relaxed">
                 Pengurusan izin kunjungan tahanan tahap penyidikan/penindakan. Disahkan oleh <strong>Penyidik Koneksitas</strong> dengan nomor registrasi <code>PMpd.1</code>.
+                Tahanan yang sedangan dalam proses pemeriksaan/penyidikan.
               </p>
               <div className="flex flex-wrap gap-2.5">
                 <Link
