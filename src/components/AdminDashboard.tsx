@@ -1201,181 +1201,211 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-md border border-slate-200/90 overflow-hidden">
+        {/* Table Header Bar */}
+        <div className="px-5 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-emerald-700" />
+            <span className="text-sm font-bold text-slate-800">Data Permohonan Kunjungan</span>
+            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
+              {filteredList.length} data
+            </span>
+          </div>
+          <span className="text-xs text-slate-400 hidden sm:block">Diurutkan: {sortBy === 'nomor_asc' ? 'B-1, B-2...' : sortBy === 'nomor_desc' ? 'Menurun' : sortBy === 'tgl_kunjungan_asc' ? 'Tgl Kunjungan Terdekat' : sortBy === 'tgl_kunjungan_desc' ? 'Tgl Kunjungan Terjauh' : sortBy === 'created_desc' ? 'Terbaru' : 'Terlama'}</span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs sm:text-sm">
-            <thead className="bg-[#0a2e1e] text-slate-300 uppercase text-[10px] font-bold tracking-wider">
-              <tr>
+            <thead>
+              <tr className="bg-[#0a2e1e] text-slate-300">
+                <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 w-10 text-center">#</th>
                 <th
-                  className="px-4 py-3.5 cursor-pointer select-none hover:text-white transition group"
+                  className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none hover:text-white transition group"
                   onClick={() => setSortBy((prev) => (prev === 'nomor_asc' ? 'nomor_desc' : 'nomor_asc'))}
-                  title="Urutkan berdasarkan nomor surat (klik untuk membalik urutan B-1, B-2...)"
-                >
-                  <div className="flex items-center gap-2">
-                    <span>No. Surat T-10</span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-amber-400/30 group-hover:bg-emerald-900 transition">
-                      {sortBy === 'nomor_asc' ? (
-                        <>
-                          <ArrowUp className="w-3 h-3 text-amber-400" />
-                          <span>Urut: B-1, B-2...</span>
-                        </>
-                      ) : sortBy === 'nomor_desc' ? (
-                        <>
-                          <ArrowDown className="w-3 h-3 text-amber-400" />
-                          <span>Urut: Menurun</span>
-                        </>
-                      ) : (
-                        <>
-                          <Filter className="w-3 h-3 text-amber-400" />
-                          <span>Urut Khusus</span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </th>
-                <th className="px-4 py-3.5">Direktorat</th>
-                <th className="px-4 py-3.5">Pemohon & NIK</th>
-                <th className="px-4 py-3.5">Tahanan Militer</th>
-                <th
-                  className="px-4 py-3.5 cursor-pointer select-none hover:text-white transition group"
-                  onClick={() => setSortBy((prev) => (prev === 'tgl_kunjungan_asc' ? 'tgl_kunjungan_desc' : 'tgl_kunjungan_asc'))}
-                  title="Urutkan berdasarkan tanggal kunjungan"
+                  title="Klik untuk membalik urutan"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Jadwal & Lokasi</span>
+                    <span>No. Surat T-10</span>
+                    {sortBy === 'nomor_asc' && <ArrowUp className="w-3 h-3 text-amber-400" />}
+                    {sortBy === 'nomor_desc' && <ArrowDown className="w-3 h-3 text-amber-400" />}
+                  </div>
+                </th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">Pemohon</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">Tahanan Militer</th>
+                <th
+                  className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none hover:text-white transition group"
+                  onClick={() => setSortBy((prev) => (prev === 'tgl_kunjungan_asc' ? 'tgl_kunjungan_desc' : 'tgl_kunjungan_asc'))}
+                  title="Klik untuk mengurutkan berdasarkan tanggal kunjungan"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Jadwal Kunjungan</span>
                     {sortBy === 'tgl_kunjungan_asc' && <ArrowUp className="w-3 h-3 text-amber-400" />}
                     {sortBy === 'tgl_kunjungan_desc' && <ArrowDown className="w-3 h-3 text-amber-400" />}
                   </div>
                 </th>
-                <th className="px-4 py-3.5 text-center">Status</th>
-                <th className="px-4 py-3.5 text-right">Aksi Petugas</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-center">Status</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
-                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="font-semibold text-slate-600">Tidak ada permohonan yang sesuai filter.</p>
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">
+                        <FileText className="w-7 h-7 text-slate-300" />
+                      </div>
+                      <p className="font-bold text-slate-600 text-sm">Tidak ada data ditemukan</p>
+                      <p className="text-xs text-slate-400">Coba ubah filter atau kata kunci pencarian</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                paginatedList.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                    {/* No Surat T-10 */}
-                    <td className="px-4 py-3.5 font-mono font-bold text-emerald-950 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                        <span>{item.nomorSurat}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">
-                        {formatIndonesianDate(item.createdAt)}
-                      </span>
-                    </td>
+                paginatedList.map((item, idx) => {
+                  const rowNum = (validCurrentPage - 1) * ITEMS_PER_PAGE + idx + 1;
+                  const isEven = idx % 2 === 1;
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`border-b border-slate-100 transition-colors duration-150 hover:bg-emerald-50/40 ${
+                        isEven ? 'bg-slate-50/60' : 'bg-white'
+                      }`}
+                    >
+                      {/* Row Number */}
+                      <td className="px-3 py-3 text-center">
+                        <span className="text-[11px] font-bold text-slate-400 tabular-nums">{rowNum}</span>
+                      </td>
 
-                    {/* Direktorat */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
-                        {item.direktorat || 'Penuntutan'}
-                      </span>
-                    </td>
+                      {/* No Surat T-10 */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-8 rounded-full shrink-0 bg-amber-400"></div>
+                          <div>
+                            <p className="font-mono font-extrabold text-emerald-900 text-[13px] leading-tight tracking-tight">
+                              {item.nomorSurat}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-sans mt-0.5">
+                              {formatIndonesianDate(item.createdAt)}
+                            </p>
+                            <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded mt-0.5 bg-slate-100 text-slate-600 border border-slate-200">
+                              {item.direktorat || 'Penuntutan'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Data Pemohon */}
-                    <td className="px-4 py-3.5">
-                      <p className="font-bold text-slate-900">{item.namaPemohon}</p>
-                      <p className="font-mono text-[11px] text-slate-500">NIK: {item.nikPemohon}</p>
-                      <span className="inline-block text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-medium mt-0.5">
-                        {item.hubungan}
-                      </span>
-                    </td>
+                      {/* Data Pemohon */}
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-slate-900 text-[13px] leading-tight">{item.namaPemohon}</p>
+                        <p className="font-mono text-[10px] text-slate-500 mt-0.5">NIK: {item.nikPemohon}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-medium">
+                            <Users className="w-2.5 h-2.5" />
+                            {item.hubungan}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
+                            <Phone className="w-2.5 h-2.5" />
+                            {item.noWhatsApp}
+                          </span>
+                        </div>
+                      </td>
 
-                    {/* Tahanan Militer */}
-                    <td className="px-4 py-3.5">
-                      <p className="font-bold text-slate-900">{item.namaTahanan}</p>
-                      <p className="text-[11px] text-slate-600">{item.pangkatNrpTahanan}</p>
-                      <p className="text-[10px] text-emerald-800 font-semibold">{item.satuanTahanan}</p>
-                    </td>
+                      {/* Tahanan Militer */}
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-slate-900 text-[13px] leading-tight">{item.namaTahanan}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{item.pangkatNrpTahanan}</p>
+                        <p className="text-[10px] text-emerald-800 font-bold mt-0.5 flex items-center gap-1">
+                          <Shield className="w-2.5 h-2.5" />
+                          {item.satuanTahanan}
+                        </p>
+                      </td>
 
-                    {/* Jadwal & Lokasi */}
-                    <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">
-                      <p className="font-semibold text-slate-900">{formatIndonesianDate(item.tanggalKunjungan)}</p>
-                      <p className="text-[11px] text-slate-500">{item.sesiKunjungan}</p>
-                      <p className="text-[10px] text-slate-600 truncate max-w-[140px]" title={item.lokasiRutan}>
-                        {item.lokasiRutan}
-                      </p>
-                    </td>
+                      {/* Jadwal & Lokasi */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <p className="font-bold text-slate-900 text-[13px] flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-emerald-700 shrink-0" />
+                          {formatIndonesianDate(item.tanggalKunjungan)}
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-0.5 ml-4">{item.sesiKunjungan}</p>
+                        <p className="text-[10px] text-slate-600 truncate max-w-[150px] mt-0.5 ml-4 flex items-center gap-1" title={item.lokasiRutan}>
+                          <Building className="w-2.5 h-2.5 shrink-0" />
+                          {item.lokasiRutan}
+                        </p>
+                      </td>
 
-                    {/* Status Permohonan */}
-                    <td className="px-4 py-3.5 text-center whitespace-nowrap">
-                      {item.status === 'Disetujui' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Disetujui
-                        </span>
-                      )}
-                      {item.status === 'Diproses' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                          <Clock className="w-3 h-3 text-amber-600" /> Diproses
-                        </span>
-                      )}
-                      {item.status === 'Ditolak' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-800 border border-red-300">
-                          <XCircle className="w-3 h-3 text-red-600" /> Ditolak
-                        </span>
-                      )}
-                      {item.status === 'Selesai' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
-                          <CheckCircle2 className="w-3 h-3 text-blue-600" /> Selesai
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* Tombol Lihat/Unduh Foto KTP */}
-                        <button
-                          onClick={() => setViewKtpItem(item)}
-                          title="Lihat & Unduh Foto KTP Pemohon"
-                          className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 rounded-lg text-xs font-semibold transition border border-blue-200 flex items-center gap-1 shadow-sm"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-blue-700" />
-                          <span className="hidden md:inline">KTP</span>
-                        </button>
-
-                        {/* Tombol Kelola Status (Untuk Admin & Pejabat Pengesah) */}
-                        {!isStaff && (
-                          <button
-                            id={`btn-edit-status-${item.id}`}
-                            onClick={() => handleOpenEditModal(item)}
-                            className="px-2.5 py-1.5 bg-[#0a2e1e] hover:bg-[#0d3d28] text-amber-400 rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-sm"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>{isSigner ? 'Acc / TTD' : 'Kelola Status'}</span>
-                          </button>
+                      {/* Status Permohonan */}
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        {item.status === 'Disetujui' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            Disetujui
+                          </span>
                         )}
-
-                        <button
-                          id={`btn-cetak-t10-${item.id}`}
-                          onClick={() => onViewDoc(item)}
-                          title="Cetak Surat Izin T-10"
-                          className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-lg text-xs font-bold transition border border-emerald-300"
-                        >
-                          <FileText className="w-4 h-4 text-emerald-800" />
-                        </button>
-
-                        {/* Tombol Hapus untuk Admin & Staff */}
-                        {(isAdmin || isStaff) && (
-                          <button
-                            onClick={() => handleDeletePermohonan(item)}
-                            title="Hapus Data Kunjungan"
-                            className="p-1.5 bg-red-100 hover:bg-red-200 text-red-900 rounded-lg text-xs font-bold transition border border-red-300"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-700" />
-                          </button>
+                        {item.status === 'Diproses' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-sm">
+                            <Clock className="w-3.5 h-3.5 text-amber-500" />
+                            Diproses
+                          </span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                        {item.status === 'Ditolak' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-red-50 text-red-800 border border-red-200 shadow-sm">
+                            <XCircle className="w-3.5 h-3.5 text-red-500" />
+                            Ditolak
+                          </span>
+                        )}
+                        {item.status === 'Selesai' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 shadow-sm">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
+                            Selesai
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setViewKtpItem(item)}
+                            title="Lihat & Unduh Foto KTP Pemohon"
+                            className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg transition border border-blue-200"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+
+                          {!isStaff && (
+                            <button
+                              id={`btn-edit-status-${item.id}`}
+                              onClick={() => handleOpenEditModal(item)}
+                              title={isSigner ? 'Acc / TTD' : 'Kelola Status'}
+                              className="px-2.5 py-1.5 bg-[#0a2e1e] hover:bg-[#0d3d28] text-amber-400 rounded-lg text-[11px] font-bold transition flex items-center gap-1"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span className="hidden lg:inline">{isSigner ? 'Acc/TTD' : 'Kelola'}</span>
+                            </button>
+                          )}
+
+                          <button
+                            id={`btn-cetak-t10-${item.id}`}
+                            onClick={() => onViewDoc(item)}
+                            title="Cetak Surat Izin T-10"
+                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg transition border border-emerald-200"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+
+                          {(isAdmin || isStaff) && (
+                            <button
+                              onClick={() => handleDeletePermohonan(item)}
+                              title="Hapus Data Kunjungan"
+                              className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition border border-red-200"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1383,27 +1413,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Pagination Section (Maksimal 10 Baris) */}
         {filteredList.length > 0 && (
-          <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-            <div>
+          <div className="px-5 py-3.5 bg-gradient-to-r from-slate-50 to-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">
               Menampilkan{' '}
-              <strong className="font-bold text-slate-900">
-                {(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}
+              <strong className="font-bold text-emerald-900">
+                {(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(validCurrentPage * ITEMS_PER_PAGE, filteredList.length)}
               </strong>{' '}
-              -{' '}
-              <strong className="font-bold text-slate-900">
-                {Math.min(validCurrentPage * ITEMS_PER_PAGE, filteredList.length)}
-              </strong>{' '}
-              dari <strong className="font-bold text-slate-900">{filteredList.length}</strong> data
-              <span className="text-slate-400 ml-1.5 hidden sm:inline">(Maks. 10 baris per halaman)</span>
+              dari{' '}
+              <strong className="font-bold text-slate-900">{filteredList.length}</strong> data
+              {totalPages > 1 && (
+                <span className="text-slate-400 ml-1.5 hidden sm:inline">
+                  · Hal. {validCurrentPage} / {totalPages}
+                </span>
+              )}
             </div>
 
             {totalPages > 1 && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={validCurrentPage === 1}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 font-semibold"
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 text-xs font-semibold shadow-sm"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Sebelumnya</span>
@@ -1418,11 +1449,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       pageNum !== totalPages &&
                       Math.abs(pageNum - validCurrentPage) > 1
                     ) {
-                      if (
-                        pageNum === validCurrentPage - 2 ||
-                        pageNum === validCurrentPage + 2
-                      ) {
-                        return <span key={pageNum} className="px-1 text-slate-400">...</span>;
+                      if (pageNum === validCurrentPage - 2 || pageNum === validCurrentPage + 2) {
+                        return <span key={pageNum} className="px-1 text-slate-400 text-xs">…</span>;
                       }
                       return null;
                     }
@@ -1431,10 +1459,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         key={pageNum}
                         type="button"
                         onClick={() => setCurrentPage(pageNum)}
-                        className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold transition ${
+                        className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold transition shadow-sm ${
                           validCurrentPage === pageNum
-                            ? 'bg-[#0a2e1e] text-white shadow-sm'
-                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                            ? 'bg-[#0a2e1e] text-amber-300 shadow-md'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:border-emerald-300'
                         }`}
                       >
                         {pageNum}
@@ -1447,7 +1475,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={validCurrentPage === totalPages}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 font-semibold"
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 text-xs font-semibold shadow-sm"
                 >
                   <span className="hidden sm:inline">Selanjutnya</span>
                   <ChevronRight className="w-3.5 h-3.5" />
