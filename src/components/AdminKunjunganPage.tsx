@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { SuratT10Viewer } from './SuratT10Viewer';
 import { LoadingScreen } from './LoadingScreen';
 import { DEFAULT_SETTINGS } from '../data/blueprintData';
-import { formatIndonesianDate, compareNomorSurat } from '../utils/validation';
+import { formatIndonesianDate, compareNomorSurat, normalizeDateToYMD } from '../utils/validation';
 
 const STATUS_STYLE: Record<string, string> = {
   'Diproses': 'bg-amber-100 text-amber-800 border-amber-200',
@@ -23,7 +23,8 @@ export const AdminKunjunganPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Semua');
-  const [filterDateMode, setFilterDateMode] = useState<'semua' | 'hari_ini' | 'besok' | 'kustom'>('semua');
+  const [filterDateTarget, setFilterDateTarget] = useState<'kunjungan' | 'pendaftaran'>('kunjungan');
+  const [filterDateMode, setFilterDateMode] = useState<'semua' | 'hari_ini' | 'besok' | 'minggu_ini' | 'bulan_ini' | 'kustom'>('semua');
   const [filterDateStart, setFilterDateStart] = useState<string>('');
   const [filterDateEnd, setFilterDateEnd] = useState<string>('');
   const [filterSesi, setFilterSesi] = useState<string>('Semua');
@@ -116,15 +117,32 @@ export const AdminKunjunganPage: React.FC = () => {
   };
 
   // Helper tanggal lokal (YYYY-MM-DD)
-  const getFormattedToday = () => {
+  const getTodayYMD = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  const getFormattedTomorrow = () => {
+  const getTomorrowYMD = () => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getNext7DaysYMD = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getStartOfMonthYMD = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  };
+
+  const getEndOfMonthYMD = () => {
+    const d = new Date();
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   };
 
   // List Rutan unik sesuai direktorat
@@ -142,12 +160,12 @@ export const AdminKunjunganPage: React.FC = () => {
   // Jumlah filter aktif di panel
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filterDateMode !== 'semua') count++;
+    if (filterDateMode !== 'semua' || filterDateStart || filterDateEnd) count++;
     if (filterSesi !== 'Semua') count++;
     if (filterRutan !== 'Semua') count++;
     if (sortBy !== 'nomor_asc') count++;
     return count;
-  }, [filterDateMode, filterSesi, filterRutan, sortBy]);
+  }, [filterDateMode, filterDateStart, filterDateEnd, filterSesi, filterRutan, sortBy]);
 
   const hasAnyFilter = useMemo(() => {
     return (
@@ -164,6 +182,7 @@ export const AdminKunjunganPage: React.FC = () => {
 
   const resetAllFilters = () => {
     setFilterStatus('Semua');
+    setFilterDateTarget('kunjungan');
     setFilterDateMode('semua');
     setFilterDateStart('');
     setFilterDateEnd('');
@@ -174,8 +193,11 @@ export const AdminKunjunganPage: React.FC = () => {
   };
 
   const filtered = useMemo(() => {
-    const today = getFormattedToday();
-    const tomorrow = getFormattedTomorrow();
+    const today = getTodayYMD();
+    const tomorrow = getTomorrowYMD();
+    const next7Days = getNext7DaysYMD();
+    const startOfMonth = getStartOfMonthYMD();
+    const endOfMonth = getEndOfMonthYMD();
 
     const res = list.filter(p => {
       const matchDir = (p.direktorat || 'Penuntutan') === userDir;
@@ -183,13 +205,24 @@ export const AdminKunjunganPage: React.FC = () => {
 
       if (filterStatus !== 'Semua' && p.status !== filterStatus) return false;
 
+      // Tanggal Filter (Kunjungan atau Pendaftaran)
+      const targetDateRaw = filterDateTarget === 'pendaftaran' ? p.createdAt : p.tanggalKunjungan;
+      const targetYMD = normalizeDateToYMD(targetDateRaw);
+
       if (filterDateMode === 'hari_ini') {
-        if (p.tanggalKunjungan !== today) return false;
+        if (!targetYMD || targetYMD !== today) return false;
       } else if (filterDateMode === 'besok') {
-        if (p.tanggalKunjungan !== tomorrow) return false;
-      } else if (filterDateMode === 'kustom') {
-        if (filterDateStart && p.tanggalKunjungan < filterDateStart) return false;
-        if (filterDateEnd && p.tanggalKunjungan > filterDateEnd) return false;
+        if (!targetYMD || targetYMD !== tomorrow) return false;
+      } else if (filterDateMode === 'minggu_ini') {
+        if (!targetYMD || targetYMD < today || targetYMD > next7Days) return false;
+      } else if (filterDateMode === 'bulan_ini') {
+        if (!targetYMD || targetYMD < startOfMonth || targetYMD > endOfMonth) return false;
+      } else if (filterDateMode === 'kustom' || filterDateStart || filterDateEnd) {
+        const effStart = filterDateStart && filterDateEnd && filterDateStart > filterDateEnd ? filterDateEnd : filterDateStart;
+        const effEnd = filterDateStart && filterDateEnd && filterDateStart > filterDateEnd ? filterDateStart : filterDateEnd;
+
+        if (effStart && (!targetYMD || targetYMD < effStart)) return false;
+        if (effEnd && (!targetYMD || targetYMD > effEnd)) return false;
       }
 
       if (filterSesi !== 'Semua') {
@@ -222,12 +255,16 @@ export const AdminKunjunganPage: React.FC = () => {
         return compareNomorSurat(b.nomorSurat || '', a.nomorSurat || '');
       }
       if (sortBy === 'tgl_kunjungan_asc') {
-        const cmpDate = (a.tanggalKunjungan || '').localeCompare(b.tanggalKunjungan || '');
+        const dateA = normalizeDateToYMD(a.tanggalKunjungan);
+        const dateB = normalizeDateToYMD(b.tanggalKunjungan);
+        const cmpDate = dateA.localeCompare(dateB);
         if (cmpDate !== 0) return cmpDate;
         return compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
       }
       if (sortBy === 'tgl_kunjungan_desc') {
-        const cmpDate = (b.tanggalKunjungan || '').localeCompare(a.tanggalKunjungan || '');
+        const dateA = normalizeDateToYMD(a.tanggalKunjungan);
+        const dateB = normalizeDateToYMD(b.tanggalKunjungan);
+        const cmpDate = dateB.localeCompare(dateA);
         if (cmpDate !== 0) return cmpDate;
         return compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
       }
@@ -244,6 +281,7 @@ export const AdminKunjunganPage: React.FC = () => {
     userDir,
     searchQuery,
     filterStatus,
+    filterDateTarget,
     filterDateMode,
     filterDateStart,
     filterDateEnd,
@@ -259,7 +297,7 @@ export const AdminKunjunganPage: React.FC = () => {
   // Reset pagination ke halaman 1 saat filter atau sort berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, filterDateMode, filterDateStart, filterDateEnd, filterSesi, filterRutan, searchQuery, sortBy]);
+  }, [filterStatus, filterDateTarget, filterDateMode, filterDateStart, filterDateEnd, filterSesi, filterRutan, searchQuery, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const validCurrentPage = Math.min(currentPage, totalPages);
@@ -541,46 +579,146 @@ export const AdminKunjunganPage: React.FC = () => {
 
         {/* Row 2: Expandable Filter Panel */}
         {showFilterPanel && (
-          <div className="pt-3 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50/80 p-3.5 rounded-xl">
-            {/* Filter 1: Tanggal Kunjungan */}
-            <div>
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-emerald-700" /> Tanggal Kunjungan
-              </label>
-              <select
-                value={filterDateMode}
-                onChange={(e) => setFilterDateMode(e.target.value as any)}
-                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-              >
-                <option value="semua">Semua Tanggal</option>
-                <option value="hari_ini">Hari Ini</option>
-                <option value="besok">Besok</option>
-                <option value="kustom">Pilih Rentang Tanggal</option>
-              </select>
-
-              {/* Custom Date Range Picker */}
-              {filterDateMode === 'kustom' && (
-                <div className="mt-2 space-y-1.5 bg-white p-2 rounded-lg border border-slate-200">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Dari Tanggal:</span>
-                    <input
-                      type="date"
-                      value={filterDateStart}
-                      onChange={(e) => setFilterDateStart(e.target.value)}
-                      className="w-full text-xs p-1 border border-slate-200 rounded bg-slate-50"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Sampai Tanggal:</span>
-                    <input
-                      type="date"
-                      value={filterDateEnd}
-                      onChange={(e) => setFilterDateEnd(e.target.value)}
-                      className="w-full text-xs p-1 border border-slate-200 rounded bg-slate-50"
-                    />
-                  </div>
+          <div className="pt-3 border-t border-slate-200/80 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50/80 p-3.5 rounded-xl">
+            {/* Filter 1: Tanggal Kunjungan / Pendaftaran (Mencakup 2 kolom di layar besar) */}
+            <div className="md:col-span-2 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <label className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-700" /> Filter Rentang Tanggal
+                </label>
+                {/* Target Tanggal: Kunjungan vs Pendaftaran */}
+                <div className="flex items-center gap-1 text-[11px] bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setFilterDateTarget('kunjungan')}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition ${
+                      filterDateTarget === 'kunjungan'
+                        ? 'bg-[#0a2e1e] text-amber-300 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Tgl Kunjungan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterDateTarget('pendaftaran')}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition ${
+                      filterDateTarget === 'pendaftaran'
+                        ? 'bg-[#0a2e1e] text-amber-300 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Tgl Pendaftaran
+                  </button>
                 </div>
-              )}
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDateMode('semua');
+                    setFilterDateStart('');
+                    setFilterDateEnd('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    filterDateMode === 'semua' && !filterDateStart && !filterDateEnd
+                      ? 'bg-emerald-800 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Semua
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDateMode('hari_ini');
+                    setFilterDateStart('');
+                    setFilterDateEnd('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    filterDateMode === 'hari_ini'
+                      ? 'bg-emerald-800 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Hari Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDateMode('besok');
+                    setFilterDateStart('');
+                    setFilterDateEnd('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    filterDateMode === 'besok'
+                      ? 'bg-emerald-800 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Besok
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDateMode('minggu_ini');
+                    setFilterDateStart('');
+                    setFilterDateEnd('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    filterDateMode === 'minggu_ini'
+                      ? 'bg-emerald-800 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  7 Hari ke Depan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDateMode('bulan_ini');
+                    setFilterDateStart('');
+                    setFilterDateEnd('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    filterDateMode === 'bulan_ini'
+                      ? 'bg-emerald-800 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Bulan Ini
+                </button>
+              </div>
+
+              {/* Date Range Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                <div>
+                  <span className="text-[10px] text-slate-600 font-bold block mb-0.5">Dari Tanggal:</span>
+                  <input
+                    type="date"
+                    value={filterDateStart}
+                    onChange={(e) => {
+                      setFilterDateStart(e.target.value);
+                      setFilterDateMode('kustom');
+                    }}
+                    className="w-full text-xs p-1.5 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-600 font-bold block mb-0.5">Sampai Tanggal:</span>
+                  <input
+                    type="date"
+                    value={filterDateEnd}
+                    onChange={(e) => {
+                      setFilterDateEnd(e.target.value);
+                      setFilterDateMode('kustom');
+                    }}
+                    className="w-full text-xs p-1.5 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Filter 2: Sesi Kunjungan */}
@@ -658,7 +796,7 @@ export const AdminKunjunganPage: React.FC = () => {
             )}
             {filterDateMode === 'hari_ini' && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-medium">
-                Hari Ini
+                {filterDateTarget === 'pendaftaran' ? 'Daftar ' : 'Kunjungan '}Hari Ini
                 <button type="button" onClick={() => setFilterDateMode('semua')} className="hover:text-red-600">
                   <X className="w-3 h-3" />
                 </button>
@@ -666,15 +804,32 @@ export const AdminKunjunganPage: React.FC = () => {
             )}
             {filterDateMode === 'besok' && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-medium">
-                Besok
+                {filterDateTarget === 'pendaftaran' ? 'Daftar ' : 'Kunjungan '}Besok
                 <button type="button" onClick={() => setFilterDateMode('semua')} className="hover:text-red-600">
                   <X className="w-3 h-3" />
                 </button>
               </span>
             )}
-            {filterDateMode === 'kustom' && (
+            {filterDateMode === 'minggu_ini' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[11px] font-medium">
+                {filterDateTarget === 'pendaftaran' ? 'Daftar ' : 'Kunjungan '}7 Hari ke Depan
+                <button type="button" onClick={() => setFilterDateMode('semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterDateMode === 'bulan_ini' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[11px] font-medium">
+                {filterDateTarget === 'pendaftaran' ? 'Daftar ' : 'Kunjungan '}Bulan Ini
+                <button type="button" onClick={() => setFilterDateMode('semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {(filterDateMode === 'kustom' || filterDateStart || filterDateEnd) && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-medium">
-                Rentang: {filterDateStart || '...'} s/d {filterDateEnd || '...'}
+                {filterDateTarget === 'pendaftaran' ? 'Tgl Daftar: ' : 'Tgl Kunjungan: '}
+                {filterDateStart ? filterDateStart : 'Awal'} s/d {filterDateEnd ? filterDateEnd : 'Akhir'}
                 <button
                   type="button"
                   onClick={() => {

@@ -273,3 +273,53 @@ export function compareNomorSurat(strA: string = '', strB: string = ''): number 
   // Fallback to standard natural comparison
   return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
 }
+
+/**
+ * Normalizes any date representation (ISO 8601, DD/MM/YYYY, YYYY-MM-DD, Google Sheets Date, etc.)
+ * into a strict 'YYYY-MM-DD' format for accurate range comparisons.
+ */
+export function normalizeDateToYMD(rawDate: any): string {
+  if (!rawDate) return '';
+  const str = String(rawDate).trim();
+  if (!str || str === '-' || str === 'null' || str === 'undefined') return '';
+
+  // 1. ISO string with T (convert respecting local time or UTC string)
+  if (str.includes('T')) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 2. YYYY-MM-DD or YYYY/MM/DD
+  const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // 4. General Date parse
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  return '';
+}
