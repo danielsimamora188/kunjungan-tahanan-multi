@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ClipboardList, Search, Eye, Download, RefreshCw, Lock,
-  CheckCircle2, Clock, XCircle, UserCheck, Trash2
+  CheckCircle2, Clock, XCircle, UserCheck, Trash2, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { PermohonanT10, StatusPermohonan, Direktorat } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { SuratT10Viewer } from './SuratT10Viewer';
 import { LoadingScreen } from './LoadingScreen';
 import { DEFAULT_SETTINGS } from '../data/blueprintData';
-import { formatIndonesianDate } from '../utils/validation';
+import { formatIndonesianDate, compareNomorSurat } from '../utils/validation';
 
 const STATUS_STYLE: Record<string, string> = {
   'Diproses': 'bg-amber-100 text-amber-800 border-amber-200',
@@ -22,6 +22,7 @@ export const AdminKunjunganPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Semua');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [viewingDoc, setViewingDoc] = useState<PermohonanT10 | null>(null);
   const [viewKtpItem, setViewKtpItem] = useState<PermohonanT10 | null>(null);
   const navigate = useNavigate();
@@ -50,7 +51,7 @@ export const AdminKunjunganPage: React.FC = () => {
       const json = await resp.json();
       if (json.status === 'success' && Array.isArray(json.data)) {
         setList(json.data.sort((a: PermohonanT10, b: PermohonanT10) =>
-          new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '')
         ));
       }
     } catch (err) { console.error(err); }
@@ -107,18 +108,25 @@ export const AdminKunjunganPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const filtered = list.filter(p => {
-    const matchDir = (p.direktorat || 'Penuntutan') === userDir;
-    const q = searchQuery.toLowerCase().trim();
-    const matchQ = !q ||
-      p.namaPemohon.toLowerCase().includes(q) ||
-      p.namaTahanan.toLowerCase().includes(q) ||
-      p.nikPemohon.includes(q) ||
-      p.nomorSurat.toLowerCase().includes(q) ||
-      p.lokasiRutan.toLowerCase().includes(q);
-    const matchS = filterStatus === 'Semua' || p.status === filterStatus;
-    return matchDir && matchQ && matchS;
-  });
+  const filtered = useMemo(() => {
+    const res = list.filter(p => {
+      const matchDir = (p.direktorat || 'Penuntutan') === userDir;
+      const q = searchQuery.toLowerCase().trim();
+      const matchQ = !q ||
+        p.namaPemohon.toLowerCase().includes(q) ||
+        p.namaTahanan.toLowerCase().includes(q) ||
+        p.nikPemohon.includes(q) ||
+        p.nomorSurat.toLowerCase().includes(q) ||
+        p.lokasiRutan.toLowerCase().includes(q);
+      const matchS = filterStatus === 'Semua' || p.status === filterStatus;
+      return matchDir && matchQ && matchS;
+    });
+
+    return [...res].sort((a, b) => {
+      const cmp = compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [list, userDir, searchQuery, filterStatus, sortOrder]);
 
   const counts = {
     total: list.filter(p => (p.direktorat || 'Penuntutan') === userDir).length,
@@ -327,15 +335,37 @@ export const AdminKunjunganPage: React.FC = () => {
             </button>
           ))}
         </div>
-        <div className="relative w-full md:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Cari nama pengunjung, tahanan, NIK..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
-          />
+
+        {/* Filter & Search Bar */}
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 transition shrink-0"
+            title="Klik untuk mengubah urutan nomor surat (A-Z / Z-A)"
+          >
+            {sortOrder === 'asc' ? (
+              <>
+                <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Urut: B-1, B-2...</span>
+              </>
+            ) : (
+              <>
+                <ArrowDown className="w-3.5 h-3.5 text-amber-700" />
+                <span>Urut: Menurun</span>
+              </>
+            )}
+          </button>
+          <div className="relative w-full md:w-72">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Cari nama pengunjung, tahanan, NIK..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+            />
+          </div>
         </div>
       </div>
 
@@ -345,7 +375,28 @@ export const AdminKunjunganPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="bg-[#0a2e1e] text-slate-300 text-[10px] font-bold uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">No. Surat</th>
+                <th
+                  className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-white transition group"
+                  onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  title="Urutkan berdasarkan nomor surat (klik untuk membalik urutan)"
+                >
+                  <div className="flex items-center gap-2">
+                    <span>No. Surat</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-amber-400/30 group-hover:bg-emerald-900 transition">
+                      {sortOrder === 'asc' ? (
+                        <>
+                          <ArrowUp className="w-3 h-3 text-amber-400" />
+                          <span>Urut: B-1, B-2...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowDown className="w-3 h-3 text-amber-400" />
+                          <span>Urut: Z-A</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Direktorat</th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Nama Pengunjung</th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">NIK</th>

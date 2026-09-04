@@ -236,3 +236,40 @@ export function normalizePhoneNumber(phone: any): string {
   }
   return str;
 }
+
+/**
+ * Natural comparison for Nomor Surat T-10 or Queue Numbers (e.g. B-1, B-2, ..., B-10)
+ * Sorts strictly ascending so B-1 comes first, then B-2, ..., B-9, B-10, and so forth.
+ */
+export function compareNomorSurat(strA: string = '', strB: string = ''): number {
+  const cleanA = (strA || '').trim();
+  const cleanB = (strB || '').trim();
+
+  if (!cleanA && !cleanB) return 0;
+  if (!cleanA) return 1;
+  if (!cleanB) return -1;
+
+  // Extract letter prefix and leading integer: e.g. "B-1/PM.3...", "B-2", "B-10"
+  const regex = /^([a-zA-Z]*)[-_/\s]*(\d+)/i;
+  const matchA = cleanA.match(regex);
+  const matchB = cleanB.match(regex);
+
+  if (matchA && matchB) {
+    const prefixA = (matchA[1] || '').toUpperCase();
+    const prefixB = (matchB[1] || '').toUpperCase();
+
+    if (prefixA !== prefixB) {
+      return prefixA.localeCompare(prefixB);
+    }
+
+    const numA = parseInt(matchA[2], 10);
+    const numB = parseInt(matchB[2], 10);
+
+    if (numA !== numB) {
+      return numA - numB;
+    }
+  }
+
+  // Fallback to standard natural comparison
+  return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
+}
