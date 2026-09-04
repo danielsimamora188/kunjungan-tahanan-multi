@@ -148,9 +148,9 @@ export function normalizeWhatsAppNumber(phone: string): { isValid: boolean; norm
 }
 
 /**
- * Formats date to Indonesian standard dd-mmmm-yyyy (contoh: 04-September-2026)
+ * Formats date to Indonesian standard dd mmmm yyyy (contoh: 04 September 2026)
  */
-export function formatIndonesianDate(dateInput: any, delimiter = '-'): string {
+export function formatIndonesianDate(dateInput: any, delimiter = ' '): string {
   if (!dateInput || dateInput === '-' || dateInput === 'null' || dateInput === 'undefined') return '-';
   try {
     const months = [
