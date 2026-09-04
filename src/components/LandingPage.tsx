@@ -172,7 +172,7 @@ export const LandingPage: React.FC = () => {
             <div>
               <h3 className="text-xl font-bold text-white mb-2">Siap Mengajukan Permohonan?</h3>
               <p className="text-slate-400 text-sm">
-                Pilih direktorat yang menangani tahanan militer Anda untuk mengisi formulir digital resmi.
+                Pilih direktorat yang menangani tahanan Anda untuk mengisi formulir digital resmi.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

@@ -59,8 +59,8 @@ export const AdminTahananPage: React.FC = () => {
   const isAdmin = currentUserRole === 'Admin';
   const isReadOnly = currentUserRole === 'Penuntut Umum Koneksitas' || currentUserRole === 'Penyidik Koneksitas';
 
-  useEffect(() => { 
-    fetchList(); 
+  useEffect(() => {
+    fetchList();
   }, [userDir]);
 
   const fetchList = async () => {
@@ -181,7 +181,7 @@ export const AdminTahananPage: React.FC = () => {
   );
 
   if (isLoading) {
-    return <LoadingScreen message={`Memuat Data Tahanan Militer (Direktorat ${userDir})...`} />;
+    return <LoadingScreen message={`Memuat Data Tahanan (Direktorat ${userDir})...`} />;
   }
 
   return (
@@ -192,7 +192,7 @@ export const AdminTahananPage: React.FC = () => {
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">JAMPIDMIL · Kejaksaan RI</p>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">Data Tahanan</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Daftar data tahanan militer khusus Direktorat {userDir}.
+            Daftar data tahanan khusus Direktorat {userDir}.
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -370,7 +370,7 @@ export const AdminTahananPage: React.FC = () => {
                 <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
                   {isEditing ? 'Edit Data' : 'Tambah Baru'}
                 </p>
-                <h3 className="font-bold text-white text-lg">Data Tahanan Militer</h3>
+                <h3 className="font-bold text-white text-lg">Data Tahanan</h3>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white p-1.5 rounded-lg hover:bg-emerald-800 transition">
                 <X className="w-5 h-5" />
@@ -405,17 +405,17 @@ export const AdminTahananPage: React.FC = () => {
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nama Lengkap <span className="text-red-500">*</span></label>
-                  <input required type="text" value={formData.namaLengkap || ''} onChange={e => setFormData({...formData, namaLengkap: e.target.value})}
+                  <input required type="text" value={formData.namaLengkap || ''} onChange={e => setFormData({ ...formData, namaLengkap: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">NIK <span className="text-red-500">*</span></label>
-                  <input required type="text" maxLength={16} value={formData.nik || ''} onChange={e => setFormData({...formData, nik: e.target.value.replace(/\D/g,'')})}
+                  <input required type="text" maxLength={16} value={formData.nik || ''} onChange={e => setFormData({ ...formData, nik: e.target.value.replace(/\D/g, '') })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:ring-2 focus:ring-emerald-700 focus:outline-none" placeholder="16 digit NIK" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Jenis Kelamin</label>
-                  <select value={formData.jenisKelamin || 'Laki-laki'} onChange={e => setFormData({...formData, jenisKelamin: e.target.value as any})}
+                  <select value={formData.jenisKelamin || 'Laki-laki'} onChange={e => setFormData({ ...formData, jenisKelamin: e.target.value as any })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none">
                     <option>Laki-laki</option>
                     <option>Perempuan</option>
@@ -423,41 +423,41 @@ export const AdminTahananPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tempat Lahir</label>
-                  <input type="text" value={formData.tempatLahir || ''} onChange={e => setFormData({...formData, tempatLahir: e.target.value})}
+                  <input type="text" value={formData.tempatLahir || ''} onChange={e => setFormData({ ...formData, tempatLahir: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tanggal Lahir</label>
-                  <input type="date" value={formData.tanggalLahir || ''} onChange={e => setFormData({...formData, tanggalLahir: e.target.value})}
+                  <input type="date" value={formData.tanggalLahir || ''} onChange={e => setFormData({ ...formData, tanggalLahir: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Kebangsaan</label>
-                  <input type="text" value={formData.kebangsaan || 'Indonesia'} onChange={e => setFormData({...formData, kebangsaan: e.target.value})}
+                  <input type="text" value={formData.kebangsaan || 'Indonesia'} onChange={e => setFormData({ ...formData, kebangsaan: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Agama</label>
-                  <select value={formData.agama || 'Islam'} onChange={e => setFormData({...formData, agama: e.target.value})}
+                  <select value={formData.agama || 'Islam'} onChange={e => setFormData({ ...formData, agama: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none">
                     {AGAMA_OPTIONS.map(a => <option key={a}>{a}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pekerjaan</label>
-                  <input type="text" value={formData.pekerjaan || ''} onChange={e => setFormData({...formData, pekerjaan: e.target.value})}
+                  <input type="text" value={formData.pekerjaan || ''} onChange={e => setFormData({ ...formData, pekerjaan: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" placeholder="misal: Prajurit TNI AD" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pendidikan Terakhir</label>
-                  <select value={formData.pendidikan || 'SMA/Sederajat'} onChange={e => setFormData({...formData, pendidikan: e.target.value})}
+                  <select value={formData.pendidikan || 'SMA/Sederajat'} onChange={e => setFormData({ ...formData, pendidikan: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none">
                     {PENDIDIKAN_OPTIONS.map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tempat Tinggal / Alamat</label>
-                  <textarea rows={2} value={formData.tempatTinggal || ''} onChange={e => setFormData({...formData, tempatTinggal: e.target.value})}
+                  <textarea rows={2} value={formData.tempatTinggal || ''} onChange={e => setFormData({ ...formData, tempatTinggal: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" />
                 </div>
               </div>
@@ -468,17 +468,17 @@ export const AdminTahananPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pangkat / NRP</label>
-                  <input type="text" value={formData.pangkatNrpTahanan || ''} onChange={e => setFormData({...formData, pangkatNrpTahanan: e.target.value})}
+                  <input type="text" value={formData.pangkatNrpTahanan || ''} onChange={e => setFormData({ ...formData, pangkatNrpTahanan: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" placeholder="misal: Sertu / 2109883018" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Satuan Asal</label>
-                  <input type="text" value={formData.satuanTahanan || ''} onChange={e => setFormData({...formData, satuanTahanan: e.target.value})}
+                  <input type="text" value={formData.satuanTahanan || ''} onChange={e => setFormData({ ...formData, satuanTahanan: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none" placeholder="misal: Yonif Raider 200" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tempat Ditahan (Rutan) <span className="text-red-500">*</span></label>
-                  <select required value={formData.tempatDitahan || ''} onChange={e => setFormData({...formData, tempatDitahan: e.target.value, lokasiRutan: e.target.value})}
+                  <select required value={formData.tempatDitahan || ''} onChange={e => setFormData({ ...formData, tempatDitahan: e.target.value, lokasiRutan: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none">
                     <option value="">-- Pilih Rutan --</option>
                     {RUTAN_OPTIONS.map(r => <option key={r}>{r}</option>)}

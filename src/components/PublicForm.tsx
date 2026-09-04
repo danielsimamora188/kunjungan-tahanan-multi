@@ -33,11 +33,11 @@ interface PublicFormProps {
   onTrack: (identifier: string) => void;
 }
 
-export const PublicForm: React.FC<PublicFormProps> = ({ 
-  direktorat = 'Penuntutan', 
-  onSuccess, 
-  onViewDoc, 
-  onTrack 
+export const PublicForm: React.FC<PublicFormProps> = ({
+  direktorat = 'Penuntutan',
+  onSuccess,
+  onViewDoc,
+  onTrack
 }) => {
   // Master data tahanan
   const [tahananList, setTahananList] = useState<Tahanan[]>([]);
@@ -52,7 +52,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
   const [pekerjaanPemohon, setPekerjaanPemohon] = useState('');
   const [tanggalKunjungan, setTanggalKunjungan] = useState('');
   const [sesiKunjungan, setSesiKunjungan] = useState<'Sesi Pagi (09.00 - 11.30 WIB)' | 'Sesi Siang (13.30 - 15.30 WIB)'>('Sesi Pagi (09.00 - 11.30 WIB)');
-  const [hubungan, setHubungan] = useState<HubunganTahanan>('Keluarga Inti');
+  const [hubungan, setHubungan] = useState<string>('');
   const [keperluanKunjungan, setKeperluanKunjungan] = useState('');
   const [setujuTataTertib, setSetujuTataTertib] = useState(false);
 
@@ -95,10 +95,11 @@ export const PublicForm: React.FC<PublicFormProps> = ({
       noWhatsApp.trim().length >= 10 &&
       selectedTahananId !== '' &&
       tanggalKunjungan !== '' &&
+      hubungan.trim().length >= 2 &&
       keperluanKunjungan.trim().length >= 5 &&
       setujuTataTertib
     );
-  }, [nikPemohon, namaPemohon, noWhatsApp, selectedTahananId, tanggalKunjungan, keperluanKunjungan, setujuTataTertib]);
+  }, [nikPemohon, namaPemohon, noWhatsApp, selectedTahananId, tanggalKunjungan, hubungan, keperluanKunjungan, setujuTataTertib]);
 
   const handleKTPUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -199,7 +200,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
     setFotoKTP('');
     setTanggalKunjungan('');
     setSesiKunjungan('Sesi Pagi (09.00 - 11.30 WIB)');
-    setHubungan('Keluarga Inti');
+    setHubungan('');
     setKeperluanKunjungan('');
     setSetujuTataTertib(false);
     setSubmittedData(null);
@@ -219,7 +220,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
         waPhone = '62' + waPhone.substring(1);
       }
       const message = `Yth. Admin Direktorat ${currentDir} JAMPIDMIL,\n\nSaya telah mengajukan Permohonan Kunjungan Tahanan (T-10):\n• No. Registrasi: ${submittedData.nomorSurat}\n• Nama Pemohon: ${submittedData.namaPemohon} (NIK: ${submittedData.nikPemohon})\n• Nama Tahanan: ${submittedData.namaTahanan}\n• Tgl Kunjungan: ${formatIndonesianDate(submittedData.tanggalKunjungan)} (${submittedData.sesiKunjungan})\n• Keperluan: ${submittedData.keperluanKunjungan}\n\nMohon diproses. Terima kasih.`;
-      
+
       const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
       window.open(waUrl, '_blank');
     } catch {
@@ -230,7 +231,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
   };
 
   if (isLoadingTahanan) {
-    return <LoadingScreen message={`Memuat Data Tahanan Militer (Direktorat ${direktorat})...`} />;
+    return <LoadingScreen message={`Memuat Data Tahanan (Direktorat ${direktorat})...`} />;
   }
 
   return (
@@ -248,7 +249,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
             </span>
           </div>
           <p className="text-slate-300 text-sm max-w-xl">
-            Layanan pengajuan izin kunjungan tahanan militer/koneksitas di bawah kewenangan <strong>Direktorat {direktorat} JAMPIDMIL</strong>.
+            Layanan pengajuan izin kunjungan tahanan koneksitas di bawah kewenangan <strong>Direktorat {direktorat} JAMPIDMIL</strong>.
           </p>
         </div>
       </div>
@@ -376,7 +377,7 @@ export const PublicForm: React.FC<PublicFormProps> = ({
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Nama Tahanan Militer <span className="text-red-500">*</span>
+                  Nama Tahanan <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <select
@@ -496,18 +497,15 @@ export const PublicForm: React.FC<PublicFormProps> = ({
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Hubungan dengan Tahanan <span className="text-red-500">*</span>
                 </label>
-                <select
+                <input
+                  type="text"
                   value={hubungan}
-                  onChange={(e) => setHubungan(e.target.value as HubunganTahanan)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] transition"
-                >
-                  <option value="Keluarga Inti">Keluarga Inti (Suami/Istri/Anak/Orang Tua)</option>
-                  <option value="Penasihat Hukum / Advokat">Penasihat Hukum / Advokat</option>
-                  <option value="Kerabat / Rekan Sejawat">Kerabat / Rekan Sejawat</option>
-                  <option value="Atasan / Satuan Militer">Atasan / Satuan Militer</option>
-                  <option value="Rohaniwan">Rohaniwan</option>
-                  <option value="Tim Medis">Tim Medis / Dokter</option>
-                </select>
+                  onChange={(e) => setHubungan(e.target.value)}
+                  placeholder="Contoh: Istri, Anak, Penasihat Hukum, Atasan Satuan..."
+                  maxLength={80}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] transition placeholder:text-slate-400"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Isi sesuai hubungan Anda dengan tahanan (misal: Istri, Ayah, Kuasa Hukum).</p>
               </div>
 
               <div>

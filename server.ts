@@ -457,41 +457,61 @@ app.post("/api/login", async (req: Request, res: Response) => {
 
   // 2. Get All / Filter Permohonan
   app.get("/api/permohonan", async (req: Request, res: Response) => {
-    await fetchAllFromGAS();
-    const userContext = getUserContext(req);
-    const q = (req.query.q as string || "").toLowerCase();
-    const status = req.query.status as string;
-    const targetDir = (req.query.direktorat as string) || userContext.direktorat;
+    try {
+      await fetchAllFromGAS();
+      const userContext = getUserContext(req);
+      const q = (req.query.q as string || "").trim().toLowerCase();
+      const status = req.query.status as string;
+      const targetDir = (req.query.direktorat as string) || userContext.direktorat;
 
-    let filtered = [...permohonanList];
+      let filtered = [...permohonanList];
 
-    if (targetDir && targetDir !== "Semua") {
-      filtered = filtered.filter((item) => (item.direktorat || 'Penuntutan') === targetDir);
+      if (targetDir && targetDir !== "Semua") {
+        filtered = filtered.filter((item) => (item.direktorat || 'Penuntutan') === targetDir);
+      }
+
+      if (status && status !== "Semua") {
+        filtered = filtered.filter((item) => item.status === status);
+      }
+
+      if (q) {
+        const tokens = q.split(/\s+/).filter(Boolean);
+        filtered = filtered.filter((item) => {
+          const searchableFields = [
+            item.nomorSurat,
+            item.nikPemohon,
+            item.namaPemohon,
+            item.namaTahanan,
+            item.satuanTahanan,
+            item.pangkatNrpTahanan,
+            item.noWhatsApp,
+            item.namaPengikut,
+            item.lokasiRutan,
+            item.hubungan,
+            item.status,
+            item.direktorat
+          ];
+          const haystack = searchableFields.map(f => String(f || '').toLowerCase()).join(' ');
+          return tokens.every(t => haystack.includes(t));
+        });
+      }
+
+      // Sort newest first
+      filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+      res.json({
+        status: "success",
+        total: filtered.length,
+        data: filtered,
+      });
+    } catch (err: any) {
+      console.error("Error in GET /api/permohonan:", err);
+      res.status(500).json({
+        status: "error",
+        message: "Terjadi kesalahan pada server saat memuat data permohonan.",
+        error: err?.message || String(err)
+      });
     }
-
-    if (status && status !== "Semua") {
-      filtered = filtered.filter((item) => item.status === status);
-    }
-
-    if (q) {
-      filtered = filtered.filter((item) =>
-        item.nomorSurat.toLowerCase().includes(q) ||
-        item.nikPemohon.includes(q) ||
-        item.namaPemohon.toLowerCase().includes(q) ||
-        item.namaTahanan.toLowerCase().includes(q) ||
-        item.satuanTahanan.toLowerCase().includes(q) ||
-        item.noWhatsApp.includes(q)
-      );
-    }
-
-    // Sort newest first
-    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    res.json({
-      status: "success",
-      total: filtered.length,
-      data: filtered,
-    });
   });
 
   // 2.5 Get Admin WA Number Endpoint
@@ -528,20 +548,25 @@ app.post("/api/login", async (req: Request, res: Response) => {
     res.json({ status: "success", direktorat: dir, waNumber: phone, adminNama: adminAcc?.nama || 'Admin' });
   });
 
-  // 3. Get Single Permohonan by ID, Nomor Surat, or NIK
+  // 3. Get Single Permohonan by ID, Nomor Surat, NIK, or Nama Pemohon
   app.get("/api/permohonan/:identifier", (req: Request, res: Response) => {
     const { identifier } = req.params;
     const cleanId = decodeURIComponent(identifier).trim().toLowerCase();
 
     const found = permohonanList.find(
       (item) =>
-        item.id.toLowerCase() === cleanId ||
-        item.nomorSurat.toLowerCase() === cleanId ||
-        item.nikPemohon.toLowerCase() === cleanId
+        String(item.id || '').toLowerCase() === cleanId ||
+        String(item.nomorSurat || '').toLowerCase() === cleanId ||
+        String(item.nikPemohon || '').toLowerCase() === cleanId ||
+        String(item.namaPemohon || '').toLowerCase() === cleanId
     );
 
     if (!found) {
-      const matches = permohonanList.filter((item) => item.nikPemohon === cleanId);
+      const matches = permohonanList.filter(
+        (item) =>
+          String(item.nikPemohon || '').toLowerCase() === cleanId ||
+          String(item.namaPemohon || '').toLowerCase().includes(cleanId)
+      );
       if (matches.length > 0) {
         return res.json({ status: "success", multiple: true, data: matches });
       }
