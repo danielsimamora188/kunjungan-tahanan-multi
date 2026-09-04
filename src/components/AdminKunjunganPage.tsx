@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ClipboardList, Search, Eye, Download, RefreshCw, Lock,
-  CheckCircle2, Clock, XCircle, UserCheck, Trash2, ArrowUp, ArrowDown
+  CheckCircle2, Clock, XCircle, UserCheck, Trash2, ArrowUp, ArrowDown,
+  Filter, Calendar, Building, X
 } from 'lucide-react';
 import { PermohonanT10, StatusPermohonan, Direktorat } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -22,7 +23,13 @@ export const AdminKunjunganPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('Semua');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [filterDateMode, setFilterDateMode] = useState<'semua' | 'hari_ini' | 'besok' | 'kustom'>('semua');
+  const [filterDateStart, setFilterDateStart] = useState<string>('');
+  const [filterDateEnd, setFilterDateEnd] = useState<string>('');
+  const [filterSesi, setFilterSesi] = useState<string>('Semua');
+  const [filterRutan, setFilterRutan] = useState<string>('Semua');
+  const [sortBy, setSortBy] = useState<'nomor_asc' | 'nomor_desc' | 'tgl_kunjungan_asc' | 'tgl_kunjungan_desc' | 'created_desc' | 'created_asc'>('nomor_asc');
+  const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
   const [viewingDoc, setViewingDoc] = useState<PermohonanT10 | null>(null);
   const [viewKtpItem, setViewKtpItem] = useState<PermohonanT10 | null>(null);
   const navigate = useNavigate();
@@ -108,25 +115,142 @@ export const AdminKunjunganPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  // Helper tanggal lokal (YYYY-MM-DD)
+  const getFormattedToday = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getFormattedTomorrow = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // List Rutan unik sesuai direktorat
+  const availableRutans = useMemo(() => {
+    const dList = list.filter(p => (p.direktorat || 'Penuntutan') === userDir);
+    const set = new Set<string>();
+    dList.forEach(p => {
+      if (p.lokasiRutan && p.lokasiRutan.trim()) {
+        set.add(p.lokasiRutan.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [list, userDir]);
+
+  // Jumlah filter aktif di panel
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterDateMode !== 'semua') count++;
+    if (filterSesi !== 'Semua') count++;
+    if (filterRutan !== 'Semua') count++;
+    if (sortBy !== 'nomor_asc') count++;
+    return count;
+  }, [filterDateMode, filterSesi, filterRutan, sortBy]);
+
+  const hasAnyFilter = useMemo(() => {
+    return (
+      filterStatus !== 'Semua' ||
+      filterDateMode !== 'semua' ||
+      Boolean(filterDateStart) ||
+      Boolean(filterDateEnd) ||
+      filterSesi !== 'Semua' ||
+      filterRutan !== 'Semua' ||
+      Boolean(searchQuery.trim()) ||
+      sortBy !== 'nomor_asc'
+    );
+  }, [filterStatus, filterDateMode, filterDateStart, filterDateEnd, filterSesi, filterRutan, searchQuery, sortBy]);
+
+  const resetAllFilters = () => {
+    setFilterStatus('Semua');
+    setFilterDateMode('semua');
+    setFilterDateStart('');
+    setFilterDateEnd('');
+    setFilterSesi('Semua');
+    setFilterRutan('Semua');
+    setSearchQuery('');
+    setSortBy('nomor_asc');
+  };
+
   const filtered = useMemo(() => {
+    const today = getFormattedToday();
+    const tomorrow = getFormattedTomorrow();
+
     const res = list.filter(p => {
       const matchDir = (p.direktorat || 'Penuntutan') === userDir;
+      if (!matchDir) return false;
+
+      if (filterStatus !== 'Semua' && p.status !== filterStatus) return false;
+
+      if (filterDateMode === 'hari_ini') {
+        if (p.tanggalKunjungan !== today) return false;
+      } else if (filterDateMode === 'besok') {
+        if (p.tanggalKunjungan !== tomorrow) return false;
+      } else if (filterDateMode === 'kustom') {
+        if (filterDateStart && p.tanggalKunjungan < filterDateStart) return false;
+        if (filterDateEnd && p.tanggalKunjungan > filterDateEnd) return false;
+      }
+
+      if (filterSesi !== 'Semua') {
+        if (!p.sesiKunjungan?.includes(filterSesi)) return false;
+      }
+
+      if (filterRutan !== 'Semua') {
+        if (p.lokasiRutan !== filterRutan) return false;
+      }
+
       const q = searchQuery.toLowerCase().trim();
-      const matchQ = !q ||
-        p.namaPemohon.toLowerCase().includes(q) ||
-        p.namaTahanan.toLowerCase().includes(q) ||
-        p.nikPemohon.includes(q) ||
-        p.nomorSurat.toLowerCase().includes(q) ||
-        p.lokasiRutan.toLowerCase().includes(q);
-      const matchS = filterStatus === 'Semua' || p.status === filterStatus;
-      return matchDir && matchQ && matchS;
+      if (q) {
+        const matchQ =
+          p.namaPemohon.toLowerCase().includes(q) ||
+          p.namaTahanan.toLowerCase().includes(q) ||
+          p.nikPemohon.includes(q) ||
+          p.nomorSurat.toLowerCase().includes(q) ||
+          (p.lokasiRutan && p.lokasiRutan.toLowerCase().includes(q));
+        if (!matchQ) return false;
+      }
+
+      return true;
     });
 
     return [...res].sort((a, b) => {
-      const cmp = compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
-      return sortOrder === 'asc' ? cmp : -cmp;
+      if (sortBy === 'nomor_asc') {
+        return compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
+      }
+      if (sortBy === 'nomor_desc') {
+        return compareNomorSurat(b.nomorSurat || '', a.nomorSurat || '');
+      }
+      if (sortBy === 'tgl_kunjungan_asc') {
+        const cmpDate = (a.tanggalKunjungan || '').localeCompare(b.tanggalKunjungan || '');
+        if (cmpDate !== 0) return cmpDate;
+        return compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
+      }
+      if (sortBy === 'tgl_kunjungan_desc') {
+        const cmpDate = (b.tanggalKunjungan || '').localeCompare(a.tanggalKunjungan || '');
+        if (cmpDate !== 0) return cmpDate;
+        return compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
+      }
+      if (sortBy === 'created_desc') {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
+      if (sortBy === 'created_asc') {
+        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      }
+      return compareNomorSurat(a.nomorSurat || '', b.nomorSurat || '');
     });
-  }, [list, userDir, searchQuery, filterStatus, sortOrder]);
+  }, [
+    list,
+    userDir,
+    searchQuery,
+    filterStatus,
+    filterDateMode,
+    filterDateStart,
+    filterDateEnd,
+    filterSesi,
+    filterRutan,
+    sortBy
+  ]);
 
   const counts = {
     total: list.filter(p => (p.direktorat || 'Penuntutan') === userDir).length,
@@ -318,54 +442,275 @@ export const AdminKunjunganPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter & Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-          {['Semua', 'Diproses', 'Disetujui', 'Ditolak', 'Selesai'].map(st => (
+      {/* Filter & Search Container */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3.5">
+        {/* Row 1: Status Filter Tabs, Search Bar, Filter Toggle & Reset */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          {/* Status Tabs */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto shrink-0">
+            {['Semua', 'Diproses', 'Disetujui', 'Ditolak', 'Selesai'].map(st => (
+              <button
+                key={st}
+                onClick={() => setFilterStatus(st)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  filterStatus === st
+                    ? 'bg-emerald-900 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+              >
+                {st} {st !== 'Semua' && `(${list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === st).length})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Search, Filter Button, and Reset */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Search Input */}
+            <div className="relative flex-1 sm:w-64 md:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Cari nama pengunjung, tahanan, NIK..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                  title="Hapus pencarian"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Advanced Filter Toggle Button */}
             <button
-              key={st}
-              onClick={() => setFilterStatus(st)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                filterStatus === st
-                  ? 'bg-emerald-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              type="button"
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-semibold transition shrink-0 ${
+                showFilterPanel || activeFilterCount > 0
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700'
               }`}
+              title="Filter lanjutan (Tanggal, Sesi, Lokasi Rutan, Urutan)"
             >
-              {st} {st !== 'Semua' && `(${list.filter(p => (p.direktorat || 'Penuntutan') === userDir && p.status === st).length})`}
+              <Filter className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Filter Data</span>
+              {activeFilterCount > 0 && (
+                <span className="bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
             </button>
-          ))}
+
+            {/* Reset Filter Button */}
+            {hasAnyFilter && (
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="flex items-center gap-1 px-2.5 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl text-xs font-medium text-red-700 transition shrink-0"
+                title="Reset semua filter ke default"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span className="hidden sm:inline">Reset</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <button
-            type="button"
-            onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 transition shrink-0"
-            title="Klik untuk mengubah urutan nomor surat (A-Z / Z-A)"
-          >
-            {sortOrder === 'asc' ? (
-              <>
-                <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Urut: B-1, B-2...</span>
-              </>
-            ) : (
-              <>
-                <ArrowDown className="w-3.5 h-3.5 text-amber-700" />
-                <span>Urut: Menurun</span>
-              </>
-            )}
-          </button>
-          <div className="relative w-full md:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Cari nama pengunjung, tahanan, NIK..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-700"
-            />
+        {/* Row 2: Expandable Filter Panel */}
+        {showFilterPanel && (
+          <div className="pt-3 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50/80 p-3.5 rounded-xl">
+            {/* Filter 1: Tanggal Kunjungan */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-emerald-700" /> Tanggal Kunjungan
+              </label>
+              <select
+                value={filterDateMode}
+                onChange={(e) => setFilterDateMode(e.target.value as any)}
+                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+              >
+                <option value="semua">Semua Tanggal</option>
+                <option value="hari_ini">Hari Ini</option>
+                <option value="besok">Besok</option>
+                <option value="kustom">Pilih Rentang Tanggal</option>
+              </select>
+
+              {/* Custom Date Range Picker */}
+              {filterDateMode === 'kustom' && (
+                <div className="mt-2 space-y-1.5 bg-white p-2 rounded-lg border border-slate-200">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">Dari Tanggal:</span>
+                    <input
+                      type="date"
+                      value={filterDateStart}
+                      onChange={(e) => setFilterDateStart(e.target.value)}
+                      className="w-full text-xs p-1 border border-slate-200 rounded bg-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">Sampai Tanggal:</span>
+                    <input
+                      type="date"
+                      value={filterDateEnd}
+                      onChange={(e) => setFilterDateEnd(e.target.value)}
+                      className="w-full text-xs p-1 border border-slate-200 rounded bg-slate-50"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Filter 2: Sesi Kunjungan */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-emerald-700" /> Sesi Kunjungan
+              </label>
+              <select
+                value={filterSesi}
+                onChange={(e) => setFilterSesi(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+              >
+                <option value="Semua">Semua Sesi</option>
+                <option value="Pagi">Sesi Pagi (09.00 - 11.30 WIB)</option>
+                <option value="Siang">Sesi Siang (13.30 - 15.30 WIB)</option>
+              </select>
+            </div>
+
+            {/* Filter 3: Lokasi Rutan */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Building className="w-3 h-3 text-emerald-700" /> Lokasi Rutan
+              </label>
+              <select
+                value={filterRutan}
+                onChange={(e) => setFilterRutan(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+              >
+                <option value="Semua">Semua Lokasi Rutan</option>
+                {availableRutans.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter 4: Urutan Data (Sorting) */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <ArrowUp className="w-3 h-3 text-emerald-700" /> Urutkan Data
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+              >
+                <option value="nomor_asc">Nomor Surat: B-1, B-2... (A-Z)</option>
+                <option value="nomor_desc">Nomor Surat: Z-A (Menurun)</option>
+                <option value="tgl_kunjungan_asc">Tanggal Kunjungan: Terdekat</option>
+                <option value="tgl_kunjungan_desc">Tanggal Kunjungan: Terjauh</option>
+                <option value="created_desc">Tanggal Pengajuan: Terbaru</option>
+                <option value="created_asc">Tanggal Pengajuan: Terlama</option>
+              </select>
+            </div>
           </div>
+        )}
+
+        {/* Row 3: Filter Summary & Active Filter Badges */}
+        <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 pt-0.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-medium">
+              Menampilkan <strong className="text-slate-900 font-bold">{filtered.length}</strong> dari{' '}
+              <strong className="text-slate-900 font-bold">{counts.total}</strong> permohonan
+            </span>
+
+            {/* Active filter badges */}
+            {filterStatus !== 'Semua' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 text-[11px] font-medium">
+                Status: {filterStatus}
+                <button type="button" onClick={() => setFilterStatus('Semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterDateMode === 'hari_ini' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-medium">
+                Hari Ini
+                <button type="button" onClick={() => setFilterDateMode('semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterDateMode === 'besok' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-medium">
+                Besok
+                <button type="button" onClick={() => setFilterDateMode('semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterDateMode === 'kustom' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-medium">
+                Rentang: {filterDateStart || '...'} s/d {filterDateEnd || '...'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDateMode('semua');
+                    setFilterDateStart('');
+                    setFilterDateEnd('');
+                  }}
+                  className="hover:text-red-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterSesi !== 'Semua' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-medium">
+                Sesi: {filterSesi}
+                <button type="button" onClick={() => setFilterSesi('Semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filterRutan !== 'Semua' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-medium">
+                Rutan: {filterRutan}
+                <button type="button" onClick={() => setFilterRutan('Semua')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {sortBy !== 'nomor_asc' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 text-[11px] font-medium">
+                Urut: {
+                  sortBy === 'nomor_desc' ? 'Z-A' :
+                  sortBy === 'tgl_kunjungan_asc' ? 'Tgl Kunjungan Terdekat' :
+                  sortBy === 'tgl_kunjungan_desc' ? 'Tgl Kunjungan Terjauh' :
+                  sortBy === 'created_desc' ? 'Terbaru' : 'Terlama'
+                }
+                <button type="button" onClick={() => setSortBy('nomor_asc')} className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+
+          {hasAnyFilter && (
+            <button
+              type="button"
+              onClick={resetAllFilters}
+              className="text-emerald-700 hover:text-emerald-900 font-semibold text-xs underline underline-offset-2 ml-auto"
+            >
+              Hapus Semua Filter
+            </button>
+          )}
         </div>
       </div>
 
@@ -377,21 +722,26 @@ export const AdminKunjunganPage: React.FC = () => {
               <tr>
                 <th
                   className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-white transition group"
-                  onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-                  title="Urutkan berdasarkan nomor surat (klik untuk membalik urutan)"
+                  onClick={() => setSortBy((prev) => (prev === 'nomor_asc' ? 'nomor_desc' : 'nomor_asc'))}
+                  title="Urutkan berdasarkan nomor surat (klik untuk membalik urutan B-1, B-2...)"
                 >
                   <div className="flex items-center gap-2">
                     <span>No. Surat</span>
                     <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-amber-400/30 group-hover:bg-emerald-900 transition">
-                      {sortOrder === 'asc' ? (
+                      {sortBy === 'nomor_asc' ? (
                         <>
                           <ArrowUp className="w-3 h-3 text-amber-400" />
                           <span>Urut: B-1, B-2...</span>
                         </>
-                      ) : (
+                      ) : sortBy === 'nomor_desc' ? (
                         <>
                           <ArrowDown className="w-3 h-3 text-amber-400" />
-                          <span>Urut: Z-A</span>
+                          <span>Urut: Menurun</span>
+                        </>
+                      ) : (
+                        <>
+                          <Filter className="w-3 h-3 text-amber-400" />
+                          <span>Urut Khusus</span>
                         </>
                       )}
                     </span>
@@ -403,7 +753,17 @@ export const AdminKunjunganPage: React.FC = () => {
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Hubungan</th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Nama Tahanan</th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Tempat Ditahan</th>
-                <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Tgl Kunjungan</th>
+                <th
+                  className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-white transition group"
+                  onClick={() => setSortBy((prev) => (prev === 'tgl_kunjungan_asc' ? 'tgl_kunjungan_desc' : 'tgl_kunjungan_asc'))}
+                  title="Urutkan berdasarkan tanggal kunjungan"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Tgl Kunjungan</span>
+                    {sortBy === 'tgl_kunjungan_asc' && <ArrowUp className="w-3 h-3 text-amber-400" />}
+                    {sortBy === 'tgl_kunjungan_desc' && <ArrowDown className="w-3 h-3 text-amber-400" />}
+                  </div>
+                </th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Sesi</th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Status</th>
                 <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">Aksi</th>
