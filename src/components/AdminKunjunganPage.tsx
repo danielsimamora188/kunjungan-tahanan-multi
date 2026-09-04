@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   ClipboardList, Search, Eye, Download, RefreshCw, Lock,
   CheckCircle2, Clock, XCircle, UserCheck, Trash2, ArrowUp, ArrowDown,
-  Filter, Calendar, Building, X
+  Filter, Calendar, Building, X, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { PermohonanT10, StatusPermohonan, Direktorat } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -251,6 +251,23 @@ export const AdminKunjunganPage: React.FC = () => {
     filterRutan,
     sortBy
   ]);
+
+  // Pagination State (Maksimal 10 baris per halaman)
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Reset pagination ke halaman 1 saat filter atau sort berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterDateMode, filterDateStart, filterDateEnd, filterSesi, filterRutan, searchQuery, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedList = useMemo(() => {
+    const startIndex = (validCurrentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filtered, validCurrentPage]);
 
   const counts = {
     total: list.filter(p => (p.direktorat || 'Penuntutan') === userDir).length,
@@ -786,7 +803,7 @@ export const AdminKunjunganPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filtered.map((p, idx) => (
+                paginatedList.map((p, idx) => (
                   <tr
                     key={p.id}
                     className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-emerald-50/40 transition`}
@@ -844,13 +861,79 @@ export const AdminKunjunganPage: React.FC = () => {
           </table>
         </div>
 
-        {/* Footer info */}
+        {/* Pagination Section (Maksimal 10 Baris) */}
         {!isLoading && filtered.length > 0 && (
-          <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-            <span className="text-xs text-slate-500">
-              Menampilkan <strong>{filtered.length}</strong> dari <strong>{list.length}</strong> data kunjungan
-            </span>
-            <span className="text-xs text-slate-400">JAMPIDMIL — Kejaksaan RI</span>
+          <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            <div>
+              Menampilkan{' '}
+              <strong className="font-bold text-slate-900">
+                {(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}
+              </strong>{' '}
+              -{' '}
+              <strong className="font-bold text-slate-900">
+                {Math.min(validCurrentPage * ITEMS_PER_PAGE, filtered.length)}
+              </strong>{' '}
+              dari <strong className="font-bold text-slate-900">{filtered.length}</strong> data
+              <span className="text-slate-400 ml-1.5 hidden sm:inline">(Maks. 10 baris per halaman)</span>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={validCurrentPage === 1}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 font-semibold"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Sebelumnya</span>
+                </button>
+
+                {/* Page Numbers */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                    if (
+                      totalPages > 7 &&
+                      pageNum !== 1 &&
+                      pageNum !== totalPages &&
+                      Math.abs(pageNum - validCurrentPage) > 1
+                    ) {
+                      if (
+                        pageNum === validCurrentPage - 2 ||
+                        pageNum === validCurrentPage + 2
+                      ) {
+                        return <span key={pageNum} className="px-1 text-slate-400">...</span>;
+                      }
+                      return null;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold transition ${
+                          validCurrentPage === pageNum
+                            ? 'bg-[#0a2e1e] text-white shadow-sm'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={validCurrentPage === totalPages}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 font-semibold"
+                >
+                  <span className="hidden sm:inline">Selanjutnya</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
