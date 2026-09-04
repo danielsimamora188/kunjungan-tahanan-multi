@@ -409,26 +409,39 @@ app.get("/api/permohonan", async (req, res) => {
     if (status && status !== "Semua") {
       filtered = filtered.filter((item) => item.status === status);
     }
+    const isLacakMode = req.query.mode === "lacak" || !userContext.role;
     if (q) {
-      const tokens = q.split(/\s+/).filter(Boolean);
-      filtered = filtered.filter((item) => {
-        const searchableFields = [
-          item.nomorSurat,
-          item.nikPemohon,
-          item.namaPemohon,
-          item.namaTahanan,
-          item.satuanTahanan,
-          item.pangkatNrpTahanan,
-          item.noWhatsApp,
-          item.namaPengikut,
-          item.lokasiRutan,
-          item.hubungan,
-          item.status,
-          item.direktorat
-        ];
-        const haystack = searchableFields.map((f) => String(f || "").toLowerCase()).join(" ");
-        return tokens.every((t) => haystack.includes(t));
-      });
+      if (isLacakMode) {
+        const cleanQ = q.trim().toLowerCase();
+        const cleanDigits = q.replace(/\D/g, "");
+        filtered = filtered.filter((item) => {
+          const noSurat = String(item.nomorSurat || "").trim().toLowerCase();
+          const nik = String(item.nikPemohon || "").trim();
+          const matchesNoSurat = noSurat.includes(cleanQ);
+          const matchesNik = cleanDigits.length >= 4 && nik.includes(cleanDigits);
+          return matchesNoSurat || matchesNik;
+        });
+      } else {
+        const tokens = q.split(/\s+/).filter(Boolean);
+        filtered = filtered.filter((item) => {
+          const searchableFields = [
+            item.nomorSurat,
+            item.nikPemohon,
+            item.namaPemohon,
+            item.namaTahanan,
+            item.satuanTahanan,
+            item.pangkatNrpTahanan,
+            item.noWhatsApp,
+            item.namaPengikut,
+            item.lokasiRutan,
+            item.hubungan,
+            item.status,
+            item.direktorat
+          ];
+          const haystack = searchableFields.map((f) => String(f || "").toLowerCase()).join(" ");
+          return tokens.every((t) => haystack.includes(t));
+        });
+      }
     }
     filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     res.json({

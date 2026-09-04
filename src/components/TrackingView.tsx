@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Shield, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, MapPin, ExternalLink, ArrowRight, Building2, X, Loader2, FileText } from 'lucide-react';
+import { Search, Shield, Clock, CheckCircle2, XCircle, AlertCircle, User, Calendar, MapPin, ExternalLink, ArrowRight, Building2, X, Loader2, FileText, Lock, ShieldAlert } from 'lucide-react';
 import { PermohonanT10, StatusPermohonan, Direktorat } from '../types';
 import { formatIndonesianDate } from '../utils/validation';
 
@@ -9,8 +9,8 @@ interface TrackingViewProps {
   onViewDoc?: (permohonan: PermohonanT10) => void;
 }
 
-export const TrackingView: React.FC<TrackingViewProps> = ({
-  initialQuery = '',
+export const TrackingView: React.FC<TrackingViewProps> = ({ 
+  initialQuery = '', 
   direktorat: fixedDirektorat,
   onViewDoc,
 }) => {
@@ -22,6 +22,12 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check if input looks like a person's name (letters with spaces, no numbers, no standard prefix)
+  const isLikelyName = searchQuery.trim().length >= 3 && 
+    !/\d/.test(searchQuery) && 
+    !searchQuery.toLowerCase().includes('b-') && 
+    !searchQuery.toLowerCase().includes('pm');
 
   const performSearch = useCallback(async (queryToSearch: string, dirFilter = selectedDirektorat) => {
     const clean = queryToSearch.trim();
@@ -39,6 +45,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
     try {
       const params = new URLSearchParams();
       params.set('q', clean);
+      params.set('mode', 'lacak'); // STRICT: Only allows Nomor Surat or NIK
       if (dirFilter && dirFilter !== 'Semua') {
         params.set('direktorat', dirFilter);
       }
@@ -153,7 +160,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
         <div className="relative z-10">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-amber-400 border border-amber-500/30 rounded-lg bg-amber-500/10">
-              Layanan Pelacakan Status Real-Time
+              Layanan Pelacakan Status Resmi (T-10)
             </span>
             {fixedDirektorat ? (
               <span className="inline-block px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300 border border-emerald-400/30 rounded-lg bg-emerald-500/20">
@@ -173,9 +180,20 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
             Lacak Surat Izin Kunjungan (T-10)
           </h2>
-          <p className="text-slate-300 text-sm max-w-xl">
-            Lacak status permohonan izin kunjungan tahanan secara instan dengan memasukkan <strong>Nama Pengunjung</strong>, <strong>NIK</strong>, <strong>Nomor Surat Registrasi T-10</strong>, atau <strong>Nama Tahanan</strong>.
+          <p className="text-slate-300 text-sm max-w-xl leading-relaxed">
+            Demi keamanan dan perlindungan privasi data pemohon serta tahanan militer, pelacakan status permohonan <strong>hanya dapat dilakukan menggunakan Nomor Registrasi Surat T-10 atau NIK Pemohon yang sah</strong>.
           </p>
+        </div>
+      </div>
+
+      {/* Security Privacy Notice Box */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3 text-xs text-amber-900 shadow-sm">
+        <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+        <div>
+          <span className="font-bold">Keamanan & Kerahasiaan Data Terlindungi: </span>
+          <span>
+            Pencarian publik dibatasi hanya untuk Nomor Surat Registrasi T-10 atau NIK Pemohon. Pelacakan dengan nama pengunjung atau nama tahanan dinonaktifkan demi privasi.
+          </span>
         </div>
       </div>
 
@@ -197,10 +215,11 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => handleDirektoratFilterChange(tab.id)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${selectedDirektorat === tab.id
-                    ? 'bg-[#0a2e1e] text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    selectedDirektorat === tab.id
+                      ? 'bg-[#0a2e1e] text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
                 >
                   {tab.label}
                 </button>
@@ -212,7 +231,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
         <form onSubmit={handleSearchSubmit} className="space-y-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Nama Pengunjung, NIK, atau Nomor Surat Registrasi
+              Nomor Registrasi Surat T-10 atau NIK Pemohon
             </label>
             <div className="relative flex items-center">
               <Search className="w-5 h-5 text-slate-400 absolute left-4 pointer-events-none" />
@@ -220,11 +239,17 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={handleInputChange}
-                placeholder="Ketik nama pengunjung, NIK, atau nomor surat (contoh: Dwi, Susmalita, 3302...)"
+                placeholder={
+                  selectedDirektorat === 'Penindakan'
+                    ? 'Contoh: B-1/PM.3/PMpd.1/09/2026 atau NIK Pemohon (16 digit)...'
+                    : selectedDirektorat === 'Penuntutan'
+                    ? 'Contoh: B-1/PM.3/PMpt.1/09/2026 atau NIK Pemohon (16 digit)...'
+                    : 'Nomor Surat (contoh: B-1/PM.3/...) atau NIK Pemohon (16 digit)...'
+                }
                 required
-                className="w-full pl-12 pr-36 py-3.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] transition placeholder:text-slate-400 placeholder:font-normal"
+                className="w-full pl-12 pr-36 py-3.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0a2e1e] transition font-mono placeholder:text-slate-400 placeholder:font-normal placeholder:font-sans"
               />
-
+              
               <div className="absolute right-2 flex items-center gap-1.5">
                 {searchQuery && (
                   <button
@@ -255,8 +280,18 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
             </div>
           </div>
 
+          {/* Contextual Warning if user attempts to search by a name */}
+          {isLikelyName && (
+            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+              <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600" />
+              <span>
+                <strong>Perhatian:</strong> Pelacakan hanya dapat menggunakan <strong>Nomor Surat Registrasi</strong> atau <strong>NIK Pemohon</strong>. Nama tidak dapat digunakan untuk melacak.
+              </span>
+            </div>
+          )}
+
           <p className="text-[11px] text-slate-500">
-            💡 <strong>Pencarian Cepat:</strong> Data langsung dicari otomatis saat Anda mengetik nama pengunjung, NIK, atau nomor surat registrasi.
+            💡 <strong>Format Valid:</strong> Nomor Surat T-10 resmi (contoh: <code>B-1/PM.3/PMpt.1/...</code>) atau 16 digit NIK Pemohon yang terdaftar.
           </p>
         </form>
       </div>
@@ -287,7 +322,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                 Data Tidak Ditemukan
               </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                Tidak ada permohonan yang cocok dengan kata kunci <strong>"{searchQuery}"</strong>. Pastikan Nama Pengunjung, NIK, atau Nomor Surat yang Anda masukkan sudah sesuai.
+                Tidak ada permohonan yang cocok dengan kata kunci <strong>"{searchQuery}"</strong>. Pastikan Nomor Surat Registrasi T-10 atau NIK Pemohon yang Anda masukkan sudah benar.
               </p>
             </div>
           ) : (
@@ -299,10 +334,11 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                 <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-slate-100">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${item.direktorat === 'Penindakan'
-                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        }`}>
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
+                        item.direktorat === 'Penindakan'
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      }`}>
                         Direktorat {item.direktorat || 'Penuntutan'}
                       </span>
                     </div>
@@ -317,25 +353,22 @@ export const TrackingView: React.FC<TrackingViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-slate-700">
-                  <div className="space-y-2 bg-amber-50/50 p-3.5 rounded-xl border border-amber-100">
+                  <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                     <p className="font-bold text-slate-900 flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5 text-amber-600" />
                       Identitas Pengunjung (Pemohon):
                     </p>
-                    <p><span className="text-slate-500">Nama Pengunjung:</span> <strong className="text-slate-900 text-sm">{item.namaPemohon}</strong></p>
+                    <p><span className="text-slate-500">Nama:</span> <strong className="text-slate-900">{item.namaPemohon}</strong></p>
                     <p><span className="text-slate-500">NIK:</span> <span className="font-mono">{item.nikPemohon}</span></p>
                     <p><span className="text-slate-500">Hubungan:</span> {item.hubungan}</p>
-                    {item.alamatPemohon && (
-                      <p><span className="text-slate-500">Alamat:</span> {item.alamatPemohon}</p>
-                    )}
                   </div>
 
                   <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                     <p className="font-bold text-slate-900 flex items-center gap-1.5">
                       <Shield className="w-3.5 h-3.5 text-emerald-600" />
-                      Tahanan:
+                      Tahanan Militer:
                     </p>
-                    <p><span className="text-slate-500">Nama:</span> <strong className="text-slate-900 text-sm">{item.namaTahanan}</strong></p>
+                    <p><span className="text-slate-500">Nama:</span> <strong className="text-slate-900">{item.namaTahanan}</strong></p>
                     <p><span className="text-slate-500">Pangkat/Satuan:</span> {item.pangkatNrpTahanan} ({item.satuanTahanan})</p>
                     <p><span className="text-slate-500">Lokasi Rutan:</span> {item.lokasiRutan}</p>
                   </div>

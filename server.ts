@@ -474,26 +474,47 @@ app.post("/api/login", async (req: Request, res: Response) => {
         filtered = filtered.filter((item) => item.status === status);
       }
 
+      const isLacakMode = req.query.mode === 'lacak' || !userContext.role;
+
       if (q) {
-        const tokens = q.split(/\s+/).filter(Boolean);
-        filtered = filtered.filter((item) => {
-          const searchableFields = [
-            item.nomorSurat,
-            item.nikPemohon,
-            item.namaPemohon,
-            item.namaTahanan,
-            item.satuanTahanan,
-            item.pangkatNrpTahanan,
-            item.noWhatsApp,
-            item.namaPengikut,
-            item.lokasiRutan,
-            item.hubungan,
-            item.status,
-            item.direktorat
-          ];
-          const haystack = searchableFields.map(f => String(f || '').toLowerCase()).join(' ');
-          return tokens.every(t => haystack.includes(t));
-        });
+        if (isLacakMode) {
+          // STRICT SECURITY & PRIVACY RULE:
+          // Pelacakan publik HANYA BOLEH menggunakan Nomor Registrasi Surat T-10 atau NIK Pemohon.
+          // Nama pengunjung, nama tahanan, dll. TIDAK BISA dan TIDAK BOLEH dilacak demi kerahasiaan data.
+          const cleanQ = q.trim().toLowerCase();
+          const cleanDigits = q.replace(/\D/g, '');
+
+          filtered = filtered.filter((item) => {
+            const noSurat = String(item.nomorSurat || '').trim().toLowerCase();
+            const nik = String(item.nikPemohon || '').trim();
+
+            const matchesNoSurat = noSurat.includes(cleanQ);
+            const matchesNik = cleanDigits.length >= 4 && nik.includes(cleanDigits);
+
+            return matchesNoSurat || matchesNik;
+          });
+        } else {
+          // Internal Admin / Staff search (authenticated)
+          const tokens = q.split(/\s+/).filter(Boolean);
+          filtered = filtered.filter((item) => {
+            const searchableFields = [
+              item.nomorSurat,
+              item.nikPemohon,
+              item.namaPemohon,
+              item.namaTahanan,
+              item.satuanTahanan,
+              item.pangkatNrpTahanan,
+              item.noWhatsApp,
+              item.namaPengikut,
+              item.lokasiRutan,
+              item.hubungan,
+              item.status,
+              item.direktorat
+            ];
+            const haystack = searchableFields.map(f => String(f || '').toLowerCase()).join(' ');
+            return tokens.every(t => haystack.includes(t));
+          });
+        }
       }
 
       // Sort newest first
